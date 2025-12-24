@@ -1,6 +1,5 @@
 # Bimo Robotics Kit – Open-Source Bipedal Robotics Platform
 
-**An open-source robotics development kit for building, training, and deploying bipedal walking policies.**
 ![Bimo Robotics Kit](assets/bimo_main.webp)
 Bimo is a **45 cm tall bipedal robot** created to democratize bipedal robotics research in a compact platform. Get started with pre-built kits or customize the design. Includes complete CAD files (coming soon), RP2040 firmware, Isaac Lab training environment, and a Python API for real-time control and model deployment
 
@@ -17,7 +16,7 @@ Bimo is a **45 cm tall bipedal robot** created to democratize bipedal robotics r
 - **Accessible Price:** High-quality kit at **$950** (SLS) or build your own DIY (FDM) edition.
 - **Fast Training:** Vectorized Isaac Lab environments to train policies in <20 minutes (depends on hardware).
 
-[Bimo Walk](assets/bimo_walk.webp)
+![Bimo Walk](assets/bimo_walk.webp)
 
 ---
 
