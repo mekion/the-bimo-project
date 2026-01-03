@@ -1,5 +1,5 @@
-# Copyright (c) 2025, Mekion
-# Copyright (c) 2022-2025, The Isaac Lab Project Developers.
+# Copyright (c) 2025-2026, Mekion
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers.
 # SPDX-License-Identifier: Apache-2.0
 
 """Bimo Robotics Kit task environment for Isaac Lab."""
@@ -63,20 +63,17 @@ class BimoEnvCfg(DirectRLEnvCfg):
 
     # Sensors configuration
     imu: ImuCfg = ImuCfg(
-        prim_path="/World/envs/env_.*/Robot/BimoSmall/Head",
+        prim_path="/World/envs/env_.*/Robot/Bimo/Head",
         offset=ImuCfg.OffsetCfg(
-            pos=(0.0275, -0.476, -0.041),
+            pos=(-0.006, 0.0, -0.5175),
+            rot=(0.0, 0.0, 0.0, 1.0),
         ),
         debug_vis=False,
         update_period=0.012,
     )
 
-    x_off = - 1.5708  # IMU offsets (euler)
-    y_off = 2.9214e-9
-    z_off = - 3.1416
-
     contact: ContactSensorCfg = ContactSensorCfg(
-        prim_path="/World/envs/env_.*/Robot/BimoSmall/Foot.*",
+        prim_path="/World/envs/env_.*/Robot/Bimo/Foot.*",
         history_length=0,
         update_period=dt,
         debug_vis=False,
@@ -160,11 +157,6 @@ class BimoEnv(DirectRLEnv):
         # COM setting
         self.com_set = False
 
-        # IMU offsets
-        self.x_d = self.cfg.x_off
-        self.y_d = self.cfg.y_off
-        self.z_d = self.cfg.z_off
-
         # History keeping
         self.orient_h = torch.zeros(self.scene.num_envs, 4, 3, device=self.device)
         self.gyro_h = torch.zeros(self.scene.num_envs, 4, 3, device=self.device)
@@ -235,7 +227,7 @@ class BimoEnv(DirectRLEnv):
 
         # Get IMU data, add noise and scale to [-1, 1]
         self.imu_data = self.scene.sensors["imu"].data
-        orient = quaternion_to_euler(self.imu_data.quat_w, self.x_d, self.y_d, self.z_d)
+        orient = quaternion_to_euler(self.imu_data.quat_w)
 
         orient = gaussian_noise(orient, self.orient_noise)
         angular_vel = gaussian_noise(self.imu_data.ang_vel_b, self.gyro_noise)
@@ -311,7 +303,7 @@ class BimoEnv(DirectRLEnv):
 
     def _get_rewards(self):
         # Get data for reward
-        euler_imu_orient = quaternion_to_euler(self.imu_data.quat_w, self.x_d, self.y_d, self.z_d)
+        euler_imu_orient = quaternion_to_euler(self.imu_data.quat_w)
         bimo_root_pos = self.bimo.data.root_pos_w
         lin_vel = self.bimo.data.root_com_vel_w
         contact_pos = self.scene.sensors["contact"].data.pos_w
@@ -350,7 +342,7 @@ class BimoEnv(DirectRLEnv):
 
         # Get root orientations and check if robot tilted over
         root_orientations = self.bimo.data.root_quat_w
-        euler_angles = quaternion_to_euler(root_orientations, self.x_d, self.y_d, self.z_d)
+        euler_angles = quaternion_to_euler(root_orientations)
         x_rotation = torch.abs(euler_angles[:, 0])
         y_rotation = torch.abs(euler_angles[:, 1])
         orientation_termination = (x_rotation > 0.95) | (y_rotation > 0.95)
@@ -424,7 +416,7 @@ class BimoEnv(DirectRLEnv):
 
 
 @torch.jit.script
-def quaternion_to_euler(quat: torch.Tensor, d_x: float, d_y: float, d_z: float):
+def quaternion_to_euler(quat: torch.Tensor):
     if not isinstance(quat, torch.Tensor):
         quat = torch.tensor(quat)
 
@@ -452,11 +444,7 @@ def quaternion_to_euler(quat: torch.Tensor, d_x: float, d_y: float, d_z: float):
     cosy_cosp = 1 - 2 * (y * y + z * z)
     yaw = torch.atan2(siny_cosp, cosy_cosp)
 
-    return torch.stack([
-        roll + d_x,
-        pitch + d_y,
-        yaw + d_z,
-    ], dim=1)
+    return torch.stack([roll, pitch, yaw], dim=1)
 
 
 @torch.jit.script
@@ -529,7 +517,7 @@ def height_reward(bimo_root_pos):
     heights = bimo_root_pos[:, 2]
 
     # Define the ideal height and maximum deviation
-    ideal_height = 0.38
+    ideal_height = 0.381
     max_deviation = 0.3
 
     # Calculate the absolute difference between current and ideal height

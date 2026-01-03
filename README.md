@@ -30,7 +30,7 @@ Bimo is a **45 cm tall bipedal robot** created to democratize bipedal robotics r
 | **Sensors** | BNO08x 9-DOF IMU, 4× TOF distance sensors, 2x 180ºFOV Cameras |
 | **Microcontroller** | Custom PCB, based on the RP2040 |
 | **Communication** | Direct through USB |
-| **Power** | 12V Includes adapters for different power supply |
+| **Power** | 12V Includes adapters for different power supplies |
 | **Compute** | On-board MCU, offboard inference via Python API (compatible with SBCs)|
 | **Design** | Hip-head biped for simpler mechanics, includes empty head volume for custom hardware |
 | **Control Loop** | 20 Hz|
@@ -102,7 +102,7 @@ the-bimo-project/
 │       │   ├── __init__.py
 │       │   └── rsl_rl.py    # RSL-RL PPO hyperparameters
 │       └── assets/
-│           └── BimoUSD/     # USD robot model
+│           └── Bimo.usd     # USD robot model
 │
 └── MCU/                     # Microcontroller firmware
     ├── README.md            # MCU protocol & setup
@@ -119,11 +119,11 @@ the-bimo-project/
 - Turn and Stop (push survival) in progress
 
 **Q1-Q2 2026:**
+- Community development
 - CE/FCC Certification
 
 **Late Q2 2026:**
 - First kits ship: SLS, DIY options available
-- Community development
 - Manuals, DIY assembly tutorials, CAD models
 
 **Q3 2026:**

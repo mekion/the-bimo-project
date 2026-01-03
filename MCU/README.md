@@ -112,13 +112,13 @@ The BimoAPI package handles all of this automatically. See `BimoAPI/bimo/bimo.py
 
 - Arduino IDE
 - Libraries:
-  - `Adafruit_BNO08x` (IMU)
-  - `SMS-STS servo driver`
+  - `Adafruit BNO08x`
+  - `FTServo`
 
 ### Steps
 
 1. Open `micro_bimo.c` in Arduino IDE
-2. Select **RP2040 Generic** as board
+2. Select **RP2040 Generic** as board (ensure RP2040 libraries are installed)
 3. Connect USB serial port
 4. Click **Upload**
 5. After flashing, the MCU appears as `/dev/ttyACM0` (or `/dev/ttyACM1`, etc.)
@@ -140,7 +140,7 @@ Typical 50ms control loop:
 ```
 [0ms]   Host sends "state" (cmd 1)
 [1ms]   MCU responds with 48 bytes
-[5ms]   Host sends 8 servo positions (5ms NN inference or 1ms if routine)
+[5ms]   Host sends 8 servo positions (~5ms NN inference or ~1ms if routine)
 [50ms]  Loop repeats
 ```
 
@@ -169,6 +169,8 @@ This ensures:
 - Add distance sensor reading from multiple sensors (threading)
 - Add on-MCU servo safety limits
 - Add toggleable servo feedback (current, temperature, speed...)
+
+**Note:** these software functions will be implemented once all required tests are passed on the main PCB.
 
 ## References
 

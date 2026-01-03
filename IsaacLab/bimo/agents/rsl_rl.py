@@ -1,5 +1,5 @@
-# Copyright (c) 2025, Mekion
-# Copyright (c) 2022-2025, The Isaac Lab Project Developers.
+# Copyright (c) 2025-2026, Mekion
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers.
 # SPDX-License-Identifier: Apache-2.0
 
 """RSL-RL PPO training configuration for Bimo Robotics Kit."""
@@ -15,17 +15,19 @@ from isaaclab_rl.rsl_rl import (
 @configclass
 class BimoPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 16
-    max_iterations = 1500  # 24-2700, 16-4200
+    max_iterations = 1500
     save_interval = 50
     experiment_name = "bimo_ppo_rsrl"
     empirical_normalization = True
-    fp16 = True
+    fp16 = True  # Optional for RKNN, can be removed
+
     policy = RslRlPpoActorCriticCfg(
         init_noise_std=1.0,
         actor_hidden_dims=[512, 256, 128],
         critic_hidden_dims=[512, 256, 128],
         activation="elu",
     )
+
     algorithm = RslRlPpoAlgorithmCfg(
         value_loss_coef=1.0,
         use_clipped_value_loss=True,

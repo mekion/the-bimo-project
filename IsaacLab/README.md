@@ -2,22 +2,23 @@
 
 Reinforcement learning training environment for Bimo robot with sim-to-real transfer using Isaac Lab.
 
-## Quick Description
 
-This folder contains the **Isaac Lab task definition** for training bipedal walking policies on Bimo using modern RL algorithms. The environment provides:
+## Overview
+
+This folder contains the **Isaac Lab task definition** for training locomotion policies for Bimo using RL algorithms. The current environment provides:
 
 - **Full Implementation**: to quickly train and deploy.
 - **Walk Task**: learns how to walk and **directly transfers to real robot**
 - **2 Experimental Task Variants**: turn, and stop (keep standing when pushed)
 - **Vectorized Approach**: parallel environments for fast, under 20 min training time (depends on hardware)
 
+
 ## Setup
 
 ### Prerequisites
 
-**Install Isaac Lab 2.0.2** (follow [official docs](https://isaac-sim.github.io/IsaacLab/v2.0.2/))
+**Install Isaac Lab 2.0.2** (follow [official docs](https://isaac-sim.github.io/IsaacLab/2.0.2/)) Migration to latest Isaac Lab version 2.3.0 is currently in progress.
 
-Project will be migrated soon to the latest version, after ensuring compatibility.
 
 ### Installation
 
@@ -26,6 +27,7 @@ From `the-bimo-project/IsaacLab`, copy the `bimo` folder into:
 ```bash
 cp -r bimo /path/to/your/IsaacLab/source/isaaclab_tasks/isaaclab_tasks/direct/
 ```
+
 
 ## Training
 
@@ -39,6 +41,7 @@ You can use video to monitor training. Disable for maximum performance.
 
 This trains the **walking model** that transfers directly to the real robot.
 
+
 ### Experimental Task Variants
 
 The following tasks are available for research and experimentation, but **do not currently transfer to hardware**:
@@ -46,15 +49,21 @@ The following tasks are available for research and experimentation, but **do not
 **1. Turn**: learns directional control via extra observation signal (turn left/right)  
 **2. Stop**: learns to keep the robot standing when pushes are applied
 
-These are included to explore alternative behaviors and can be trained, but hardware validation is needed before deployment.
+These are included to explore alternative behaviors and can be trained, but hardware validation is needed before deployment. They can be selected by changing the training objective in the environment script:
+
+```
+obj = "walk"
+```
+
 
 ### Monitor Training
 
-TensorBoard logs are saved during training:
+TensorBoard is used by default for training logs. Install TensorBoard inside your Python environment for visualization:
 
 ```bash
-tensorboard --logdir=/path/to/your/BimoIsaacLab/IsaacLab/logs/rsl_rl/bimo_ppo_rsrl
+tensorboard --logdir=/path/to/your/IsaacLab/logs/rsl_rl/bimo_ppo_rsrl
 ```
+
 
 ## Deployment on Hardware
 
@@ -71,6 +80,7 @@ Once training converges:
 
 The **walking policy** will transfer directly. Other behaviors may require hardware tuning.
 
+
 ## Task Definition
 
 The task files and configurations are defined in `bimo/`:
@@ -79,18 +89,18 @@ The task files and configurations are defined in `bimo/`:
 - **`bimo_config.py`**: robot and actuator configuration
 - **`agents/rsl_rl.py`**: RSL_RL PPO hyperparameters
 
-Detailed information about reward and environment design will be added in a future update to this README.
 
-## Current Status
+## Current Locomotion Status
 
-✅ **Walking**: tested and verified sim-to-real transfer  
-🔬 **Turning/Stopping**: experimental, training works, hardware transfer pending
+**Walking**: tested and verified sim-to-real transfer  
+**Turning/Stopping**: experimental, training works, hardware transfer pending
+
 
 ## Next Steps
 
-- **(In Progress)** Update to latest IsaacLab version
+- Update environment for Isaac Lab version 2.3.0
 - Perform sim-to-real parameter matching to improve transfer quality
-- Validate stop, turn on hardware
+- Validate stop and turn on hardware
 - Increase overall training robustness
 
 
@@ -99,6 +109,7 @@ Detailed information about reward and environment design will be added in a futu
 - [Isaac Lab Docs](https://isaac-sim.github.io/IsaacLab/main/)
 - [RSL-RL GitHub](https://github.com/leggedrobotics/rsl_rl)
 - [Bimo BimoAPI](../BimoAPI/) for hardware control and inference
+
 
 ## Support
 

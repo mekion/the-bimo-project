@@ -1,5 +1,5 @@
-# Copyright (c) 2025, Mekion
-# Copyright (c) 2022-2025, The Isaac Lab Project Developers.
+# Copyright (c) 2025-2026, Mekion
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers.
 # SPDX-License-Identifier: Apache-2.0
 
 """Bimo Robotics Kit articulation configuration and actuator parameters for Isaac Lab."""
@@ -33,8 +33,8 @@ BIMO_CFG = ArticulationCfg(
     ),
 
     init_state=ArticulationCfg.InitialStateCfg(
-        pos=(0.0, 0.0, 0.32),
-        rot=(0.0, 0.0, 1.0, 1.0),
+        pos=(0.0, 0.0, 0.35),
+        rot=(0.0, 0.0, 0.0, 1.0),
         joint_pos={
             "RHip": -30 * RAD,
             "LHip": -30 * RAD,
