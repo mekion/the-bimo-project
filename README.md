@@ -13,7 +13,7 @@ Bimo is a **45 cm tall bipedal robot** created to democratize bipedal robotics r
 - **Sim-to-Real Ready:** Train policies in Isaac Lab, deploy directly on hardware.
 - **Baseline Walking Model:** Deployed directly from simulation, without adaptation.
 - **Community-Driven:** Share your implementations and improvements with the community.
-- **Accessible Price:** High-quality kit at **$950** (SLS) or build your own DIY (FDM) edition.
+- **Two Configurations:** Available as a fully assembled SLS kit or a DIY (FDM) printable edition.
 - **Fast Training:** Vectorized Isaac Lab environments to train policies in <20 minutes (depends on hardware).
 
 ![Bimo Walk](assets/bimo_walk.webp)
