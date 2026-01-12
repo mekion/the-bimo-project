@@ -16,11 +16,10 @@ from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
 from isaaclab.utils import configclass
 from isaaclab.sim.utils import bind_physics_material
 from isaaclab.utils.noise import GaussianNoiseCfg, gaussian_noise
-
-from .bimo_config import BIMO_CFG
 from isaaclab.sensors import Imu, ImuCfg, ContactSensor, ContactSensorCfg
 from isaaclab.sim.spawners import RigidBodyMaterialCfg
 
+from .bimo_config import BIMO_CFG
 from collections.abc import Sequence
 from random import uniform
 
@@ -46,8 +45,8 @@ class BimoEnvCfg(DirectRLEnvCfg):
         "turn": [1, 1, 1, 1, 2, 1, 2],  # Learns to turn (Experimental)
     }
 
-    # Head COM shift forward (X axis)
-    com_shift = 0.0175
+    # Head COM shift (Optional)
+    com_shift = 0.0175  # Forward (X) Positive
 
     # Actuator settings
     actuator_delay_max = 4  # Physics steps
@@ -56,7 +55,10 @@ class BimoEnvCfg(DirectRLEnvCfg):
 
     # Simulation
     sim: SimulationCfg = SimulationCfg(dt=dt)
-    scene: InteractiveSceneCfg = InteractiveSceneCfg(env_spacing=2, replicate_physics=True)
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(
+        env_spacing=2,
+        replicate_physics=True
+    )
 
     # Bimo robot configuration
     bimo_cfg: ArticulationCfg = BIMO_CFG.replace(prim_path="/World/envs/env_.*/Robot")
@@ -184,7 +186,7 @@ class BimoEnv(DirectRLEnv):
         # Randomize foot pad material properties: TPU
         for i in range(self.scene.num_envs):
             for foot_name in ["FootLeft", "FootRight"]:
-                static = round(uniform(0.5, 0.8) * 10) / 10
+                static = round(uniform(1.5, 2.0) * 10) / 10
                 dynamic = static - 0.2
                 restitution = round(uniform(0.05, 0.15) * 100) / 100
 
@@ -194,12 +196,11 @@ class BimoEnv(DirectRLEnv):
                     restitution=restitution,
                     compliant_contact_stiffness=5e4,
                     compliant_contact_damping=8e2,
-                    improve_patch_friction=True,
                     friction_combine_mode="average",
                 )
 
                 mat_cfg.func(f"/World/ContactMaterials/env_{i}/{foot_name}_mat", mat_cfg)
-                prim_path = f"/World/envs/env_{i}/Robot/BimoSmall/{foot_name}"
+                prim_path = f"/World/envs/env_{i}/Robot/Bimo/{foot_name}"
                 mat_path = f"/World/ContactMaterials/env_{i}/{foot_name}_mat"
 
                 bind_physics_material(prim_path, mat_path)
@@ -209,7 +210,6 @@ class BimoEnv(DirectRLEnv):
             static_friction=1.0,
             dynamic_friction=0.5,
             restitution=0.05,
-            improve_patch_friction=True,
             friction_combine_mode="average",
         )
         spawn_ground_plane(prim_path="/World/ground", cfg=GroundPlaneCfg(physics_material=ground_cfg))
@@ -268,14 +268,14 @@ class BimoEnv(DirectRLEnv):
         actions_cpy = torch.clamp(actions.clone(), -3.0, 3.0)
         self.cmd_actions += actions_cpy * 2 / 3
 
-        # Simulates backlash ~1.59 DEG
+        # Simulates backlash
         delta = self.cmd_actions - self.gear_position
         direction = torch.sign(delta)
         direction_changed = (direction != self.last_direction) & (self.last_direction != 0)
 
         movement = torch.where(
             direction_changed,
-            torch.clamp(torch.abs(delta) - 1.6, min=0) * direction,
+            torch.clamp(torch.abs(delta) - self.cfg.backlash, min=0) * direction,
             delta,
         )
 

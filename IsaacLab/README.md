@@ -17,8 +17,8 @@ This folder contains the **Isaac Lab task definition** for training locomotion p
 
 ### Prerequisites
 
-**Install Isaac Lab 2.0.2** (follow [official docs](https://isaac-sim.github.io/IsaacLab/2.0.2/)) Migration to latest Isaac Lab version 2.3.0 is currently in progress.
-
+- **Install Isaac Lab 2.3.0** (follow the [official docs](https://isaac-sim.github.io/IsaacLab/v2.3.0/))
+- **Install TensorBoard** inside the IsaacLab environment created during its installation. TensorBoard will allow tracking training progress during RL tasks.
 
 ### Installation
 
@@ -33,13 +33,20 @@ cp -r bimo /path/to/your/IsaacLab/source/isaaclab_tasks/isaaclab_tasks/direct/
 
 ### Train Walking Policy
 
-You can use video to monitor training. Disable for maximum performance.
+To start an efficient training run in headless mode, use the following command:
+
+```bash
+./isaaclab.sh -p scripts/reinforcement_learning/rsl_rl/train.py --task Bimo --num_envs 2048 --headless
+```
+**NOTE:** adjust the number of parallel environments based on your hardware capabilities.
+
+You can record videos automatically at certain intervals during training, to minimally impact performance and get visual confirmation of the training process:
 
 ```bash
 ./isaaclab.sh -p scripts/reinforcement_learning/rsl_rl/train.py --task Bimo --num_envs 2048 --headless --video --video_interval 2000 --video_length 200
 ```
 
-This trains the **walking model** that transfers directly to the real robot.
+These commands train the default **walking model** that transfers directly to the real robot.
 
 
 ### Experimental Task Variants
@@ -98,7 +105,6 @@ The task files and configurations are defined in `bimo/`:
 
 ## Next Steps
 
-- Update environment for Isaac Lab version 2.3.0
 - Perform sim-to-real parameter matching to improve transfer quality
 - Validate stop and turn on hardware
 - Increase overall training robustness
@@ -106,7 +112,7 @@ The task files and configurations are defined in `bimo/`:
 
 ## References
 
-- [Isaac Lab Docs](https://isaac-sim.github.io/IsaacLab/main/)
+- [Isaac Lab Docs](https://isaac-sim.github.io/IsaacLab/v2.3.0/)
 - [RSL-RL GitHub](https://github.com/leggedrobotics/rsl_rl)
 - [Bimo BimoAPI](../BimoAPI/) for hardware control and inference
 

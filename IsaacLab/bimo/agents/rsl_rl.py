@@ -15,16 +15,24 @@ from isaaclab_rl.rsl_rl import (
 @configclass
 class BimoPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 16
-    max_iterations = 1500
+    max_iterations = 1200
     save_interval = 50
     experiment_name = "bimo_ppo_rsrl"
     empirical_normalization = True
-    fp16 = True  # Optional for RKNN, can be removed
+    fp16 = True  # Needed for RKNN for example, can be removed
+
+    obs_groups = {
+        "policy": ["policy"],
+        "critic": ["policy"],
+    }
 
     policy = RslRlPpoActorCriticCfg(
         init_noise_std=1.0,
         actor_hidden_dims=[512, 256, 128],
         critic_hidden_dims=[512, 256, 128],
+        actor_obs_normalization=True,
+        critic_obs_normalization=False,
+        state_dependent_std=False,
         activation="elu",
     )
 
