@@ -41,26 +41,23 @@ class Bimo():
         input("Press Enter to continue...")
 
         self.calibrate()
-        curr_pose = self.request_positions()
 
         # Calibrates ankles on centered position
         print("Lift robot from ground and remove the leg guide. Ankles will move and calibrate.")
         input("Press Enter to continue...")
 
+        curr_pose = [2048 for _ in range(8)]
         ankle_diff = int(92.54 / 360 * 4095)
+
         curr_pose[6] += ankle_diff
         curr_pose[7] -= ankle_diff
 
-        self.send_positions(curr_pose)
+        self.send_positions(self.servo2deg(curr_pose))
         sleep(3)
         self.calibrate()
 
-        print("Servo calibration successful. Please place robot on ground again.")
+        print("Servo calibration successful! Place robot on the ground in sitting pose.")
         input("Press Enter to continue...")
-
-        # Applies imu offset
-        self.update_imu_offset()
-        print("Calibration Finalized!")
 
     def update_imu_offsets(self):
         """Updates IMU offset"""
@@ -224,14 +221,14 @@ class Bimo():
         angles = [0 for _ in range(8)]
 
         # Reverse mapping rules:
-        angles[RHIP] = self.centers[0] - mapped[0]  # RHip: negate mapping
-        angles[LHIP] = mapped[1] - self.centers[1]  # LHip: same
-        angles[RSHO] = mapped[2] - self.centers[2]  # RShoulder: same
-        angles[LSHO] = mapped[3] - self.centers[3]  # LShoulder: same
-        angles[RKNEE] = mapped[4] - self.centers[4]  # RKnee: same
-        angles[LKNEE] = self.centers[5] - mapped[5]  # LKnee: negate mapping
-        angles[RANKLE] = self.centers[6] - mapped[6]  # RAnkle: negate mapping
-        angles[LANKLE] = mapped[7] - self.centers[7]  # LAnkle: same
+        angles[0] = self.centers[0] - mapped[0]  # RHip: negate mapping
+        angles[1] = mapped[1] - self.centers[1]  # LHip: same
+        angles[2] = mapped[2] - self.centers[2]  # RShoulder: same
+        angles[3] = mapped[3] - self.centers[3]  # LShoulder: same
+        angles[4] = mapped[4] - self.centers[4]  # RKnee: same
+        angles[5] = self.centers[5] - mapped[5]  # LKnee: negate mapping
+        angles[6] = self.centers[6] - mapped[6]  # RAnkle: negate mapping
+        angles[7] = mapped[7] - self.centers[7]  # LAnkle: same
 
         # Undo scaling to degrees
         for i in range(len(angles)):
