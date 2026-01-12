@@ -14,7 +14,7 @@ RAD = pi / 180
 
 BIMO_CFG = ArticulationCfg(
     spawn=sim_utils.UsdFileCfg(
-        usd_path=f"{Path(__file__).parent.resolve()}/Bimo.usd",
+        usd_path=f"{Path(__file__).parent.resolve()}/assets/Bimo.usd",
         activate_contact_sensors=True,
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
             disable_gravity=False,
