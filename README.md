@@ -133,6 +133,15 @@ the-bimo-project/
 
 ---
 
+## Partners & Supporters
+
+| Organization | Details |
+| --- | --- |
+| <img src="./assets/logo_eoi_b.webp" alt="EOI Logo" width="200"/> | [EOI](https://www.eoi.es): Escuela de Organización Industrial |
+| <img src="./assets/JLCCNC_logo.png" alt="JLCCNC Logo" width="200"/> | [JLCCNC](https://jlccnc.com): High quality CNC machining services |
+
+---
+
 ## License
 
 All code and CAD designs are, and will, be released under the **Apache 2.0 License**. See [LICENSE](LICENSE) for details.
