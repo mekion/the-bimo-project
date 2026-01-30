@@ -1,11 +1,25 @@
 from setuptools import setup, find_packages
+import os
+
+
+# Read version from __init__.py
+def get_version():
+    init_path = os.path.join(os.path.dirname(__file__), "bimo", "__init__.py")
+    with open(init_path, "r", encoding="utf-8") as f:
+        for line in f:
+            if line.startswith("__version__"):
+                return line.split("=")[1].strip().strip('"').strip("'")
+
+    raise RuntimeError("Version not found in __init__.py")
+
 
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
+
 setup(
     name="mekion-bimo",
-    version="0.1.0",
+    version=get_version(),
     description="Bimo Robotics Kit - Open-source bipedal robotics platform.",
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -17,10 +31,11 @@ setup(
         "pyserial>=3.5",
         "numpy>=2.2.0",
         "onnxruntime>=1.22.0",
+        "opencv-python>=4.13.0",
     ],
     python_requires=">=3.8",
     classifiers=[
-        "Development Status :: 3 - Alpha",
+        "Development Status :: 4 - Beta",
         "Intended Audience :: Developers",
         "Intended Audience :: Science/Research",
         "License :: OSI Approved :: Apache Software License",
@@ -29,11 +44,12 @@ setup(
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
         "Topic :: Scientific/Engineering :: Reinforcement Learning",
         "Topic :: Scientific/Engineering :: Artificial Intelligence",
         "Topic :: Scientific/Engineering :: Robotics",
     ],
-    keywords="robotics biped robot rl reinforcement-learning isaac-lab",
+    keywords="robotics biped robot rl reinforcement-learning isaac-lab computer-vision",
     project_urls={
         "Bug Reports": "https://github.com/mekion/the-bimo-project/issues",
         "Source": "https://github.com/mekion/the-bimo-project",

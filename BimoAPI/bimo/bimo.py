@@ -1,4 +1,4 @@
-# Copyright (c) 2025, Mekion
+# Copyright (c) 2025-2026, Mekion
 # SPDX-License-Identifier: Apache-2.0
 """Core Bimo Robotics Kit control class"""
 
@@ -6,14 +6,21 @@ from time import sleep
 import serial
 import struct
 import math
+import cv2
 
 
 class Bimo():
     """Bimo Robotics Kit control class"""
 
-    def __init__(self, baudrate=115200, timeout=0.2):
-        # MCU serial comms
-        self.mcu = self.__connect(baudrate, timeout)
+    def __init__(self):
+        # MCU comms
+        self.mcu = None
+        self.state_format = "<4f4H8h8h8h8H8h8B"
+        self.state_size = struct.calcsize(self.state_format)
+
+        # Cameras
+        self.front_cam = None
+        self.top_cam = None
 
         # Servos
         self.servo_max = [90, 90, 90, 12, 140, 140, 93, 93]
@@ -26,21 +33,45 @@ class Bimo():
         self.x_orient = 0
         self.y_orient = 0
 
-    # UTILITY
-    def initialize(self):
-        """Initializes robot from sitting position"""
+    # ===== UTILITY =====
+    def initialize(self, calibrate=False, baudrate=921600, timeout=0.2,
+                   camera_resolution=(1280, 720)):
+        """
+        Initialize robot from sitting position.
+
+        Args:
+            calibrate: run interactive servo calibration process.
+            baudrate: MCU serial baudrate (default: 921600)
+            timeout: Serial read timeout in seconds (default: 0.2)
+            camera_resolution: Camera resolution tuple (default: (1280, 720))
+                               Cameras run at fixed 30fps MJPEG.
+
+        Supported camera resolutions:
+            (1280, 720), (848, 480), (800, 600), (640, 480),
+            (640, 360), (352, 288), (320, 240), (160, 120)
+        """
+        self.init_mcu_comms(baudrate, timeout)
+        self.init_cameras(camera_resolution)
+
+        # Calibrates if necessary
+        if calibrate:
+            self.calibrate()
+
+        # Resets robot to sitting position
+        print("INFO: Resetting to Sit position.")
         self.send_positions(self.sit_pose)
-        sleep(2)  # Allows robot to settle
+        sleep(3)  # Allows robot to settle
         self.update_imu_offsets()
 
-        print("Initialization complete")
+        print("INFO: Initialization complete! Bimo is ready to roll (walk).")
 
-    def calibrate_robot(self):
-        """Calibrates Servos"""
-        print("Palce robot on flat gorund and align, legs and head, using the provided guides.")
+    def calibrate(self):
+        """Calibrates Servos (interactive process)"""
+        print("INFO: Starting Bimo Calibration.")
+        print("Place robot on flat ground and align legs and head using the provided guides.")
         input("Press Enter to continue...")
 
-        self.calibrate()
+        self.calibrate_servos()
 
         # Calibrates ankles on centered position
         print("Lift robot from ground and remove the leg guide. Ankles will move and calibrate.")
@@ -54,28 +85,39 @@ class Bimo():
 
         self.send_positions(self.servo2deg(curr_pose))
         sleep(3)
-        self.calibrate()
+        self.calibrate_servos()
 
-        print("Servo calibration successful! Place robot on the ground in sitting pose.")
+        print("Place robot on the ground in sitting pose.")
         input("Press Enter to continue...")
+        print("INFO: Bimo Calibration Successful!")
 
     def update_imu_offsets(self):
         """Updates IMU offset"""
-        imu, _, _ = self.request_state_data()
-        euler = self.quaternion_to_euler(imu[:4])
+        print("INFO: Calculating IMU offsets.")
+        x_total = 0
+        y_total = 0
 
-        self.x_orient = -euler[0]
-        self.y_orient = -euler[1]
+        for _ in range(10):
+            x, y, _ = self.request_state_data()["orient"]
+            x_total += x
+            y_total += y
+            sleep(0.05)
 
-    # COMMS
-    def __connect(self, baudrate, timeout):
+        self.x_orient = -x_total / 10.0
+        self.y_orient = -y_total / 10.0
+
+    # ===== MCU COMMS =====
+    def init_mcu_comms(self, baudrate, timeout):
         # Tries to connect to MCU 5 times
         for attempt in range(5):
-            mcu = None
             for port in range(5):
                 try:
-                    mcu = serial.Serial(f"/dev/ttyACM{port}", baudrate=baudrate, timeout=timeout)
-                    return mcu
+                    self.mcu = serial.Serial(
+                        f"/dev/ttyACM{port}",
+                        baudrate=baudrate,
+                        timeout=timeout,
+                    )
+                    return
 
                 except Exception:
                     continue
@@ -84,62 +126,132 @@ class Bimo():
             sleep(0.1)
 
         # Raises exception if no connection established
-        raise Exception("ERROR: Could not connect to MCU!")
+        raise RuntimeError("ERROR: Could not connect to MCU!")
 
     def request_state_data(self):
-        """Returns robot state based on sensor data: IMU, Distance, Battery/Power Voltage"""
-        # Asks for state data, Message [Byte Count, Request Code]
+        """
+            Returns robot state dict
+
+            "orient" -> Euler angles
+            "distances" -> [Front, Back, Right, Left] (m)
+            "servo_pos" -> Degrees
+            "servo_speed" -> Rad/s
+            "servo_load" -> Nm
+            "servo_voltage" -> V
+            "servo_current" -> A
+            "servo_temp" -> Celsius
+
+        """
+        # Asks for state data
         self.mcu.write(struct.pack("2i", *[4, 1]))
 
         # Processes message data
-        data = struct.unpack("12f", self.mcu.read(48))
+        data = self.mcu.read(self.state_size)
+        unpacked = struct.unpack(self.state_format, data)
 
-        # Returns IMU, Distance, Battery
-        return data[:7], data[7:11], data[-1]
-
-    def request_positions(self):
-        """Returns robot current servo positions"""
-        # Asks for state data, Message [Byte Count, Request Code]
-        self.mcu.write(struct.pack("2i", *[4, 3]))
-
-        # Processes message data
-        data = list(struct.unpack("8i", self.mcu.read(32)))
-
-        return self.servo2deg(data)
+        return {
+            "orient": self.quaternion_to_euler(unpacked[:4]),
+            "distances": [d * 0.001 for d in unpacked[4:8]],
+            "servo_pos": self.servo2deg(unpacked[8:16]),
+            "servo_speed": [d * 0.088 * (math.pi / 180) for d in unpacked[16:24]],
+            "servo_load": [d * 2.942 / 1000 for d in unpacked[24:32]],
+            "servo_voltage": [d * 0.1 for d in unpacked[32:40]],
+            "servo_current": [d * 0.0065 for d in unpacked[40:48]],
+            "servo_temp": list(unpacked[48:56]),
+        }
 
     def send_positions(self, actions):
         """Sends list of actions in degrees to MCU"""
         act = self.deg2servo(actions)
-
-        # Message [Byte Count, Actions * 4 Bytes]
         self.mcu.write(struct.pack("9i", *[32] + act))
 
-    def calibrate(self):
+    def calibrate_servos(self):
         """Sends calibration command"""
-        self.mcu.write(struct.pack("2i", *[4, 4]))
+        self.mcu.write(struct.pack("2i", *[4, 3]))
 
     def available(self):
         """Returns True if MCU ready."""
-        for i in range(5):
-            status = None
+        self.mcu.write(struct.pack("2i", *[4, 2]))
+        status = struct.unpack("i", self.mcu.read(4))
 
-            # Ask if available, Message [Byte Count, Request Code]
-            self.mcu.write(struct.pack("2i", *[4, 2]))
+        if status == 1:
+            return True
 
-            # MCU availability status
-            status = struct.unpack("i", self.mcu.read(4))
-
-            if status == 1:
-                return True
-
-            sleep(0.1)
-
-        return False
+        else:
+            return False
 
     def port(self):
         return self.mcu.port
 
-    # HELPERS
+    # ===== CAMERAS =====
+    def init_cameras(self, resolution):
+        """Load Bimo cameras."""
+        resolutions = [
+            (160, 120),
+            (320, 240),
+            (352, 288),
+            (640, 360),
+            (640, 480),
+            (800, 600),
+            (848, 480),
+            (1280, 720),
+        ]
+
+        if resolution not in resolutions:
+            raise ValueError(
+                f"ERROR: Resolution {resolution} not supported. "
+                f"Valid Resolutions: {resolutions}"
+            )
+
+        detected = []
+
+        for idx in range(10):
+            try:
+                cap = cv2.VideoCapture(idx, cv2.CAP_V4L2)
+                if cap.isOpened():
+                    ret, _ = cap.read()
+                    if ret:
+                        detected.append(idx)
+                        print(f"INFO: Camera found! (/dev/video{idx})")
+                        cap.release()
+
+                        if len(detected) == 2:
+                            break
+
+            except Exception:
+                pass
+
+        if len(detected) < 2:
+            raise RuntimeError(f"ERROR: Expected 2 cameras, found {len(detected)}!")
+
+        self.front_cam = cv2.VideoCapture(detected[0], cv2.CAP_V4L2)
+        self.top_cam = cv2.VideoCapture(detected[1], cv2.CAP_V4L2)
+
+        for cam in [self.front_cam, self.top_cam]:
+            cam.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'))
+            cam.set(cv2.CAP_PROP_FRAME_WIDTH, resolution[0])
+            cam.set(cv2.CAP_PROP_FRAME_HEIGHT, resolution[1])
+            cam.set(cv2.CAP_PROP_FPS, 30)  # Fixed 30FPS for MJPG
+
+        print(f"INFO: Bimo Cameras Ready!")
+
+    def capture_image(self, camera="front"):
+        """Captures single frame. Returns (H, W, 3) BGR numpy array."""
+        if camera not in ["front", "top"]:
+            raise ValueError("ERROR: Available cameras are 'front' and 'top'.")
+
+        if self.front_cam is None or self.top_cam is None:
+            raise RuntimeError("ERROR: Cameras not loaded. Call initialize() first.")
+
+        cam = self.front_cam if camera == "front" else self.top_cam
+        ret, frame = cam.read()
+
+        if not ret:
+            raise RuntimeError(f"ERROR: Failed to grab frame from {camera.capitalize()} camera!")
+
+        return frame
+
+    # ===== HELPERS =====
     def scale_value(self, values, mins, maxs):
         """
         Scale one value or a list of values from [min, max] to [-1, 1].
@@ -161,7 +273,7 @@ class Bimo():
             maxs = [maxs] * len(values)
 
         if not (len(values) == len(mins) == len(maxs)):
-            raise ValueError("values, mins, and maxs must have the same length.")
+            raise ValueError("ERROR: 'values', 'mins', and 'maxs' must have the same length.")
 
         return [
             _scale_scalar(v, vmin, vmax)

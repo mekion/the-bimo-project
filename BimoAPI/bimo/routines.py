@@ -1,4 +1,4 @@
-# Copyright (c) 2025, Mekion
+# Copyright (c) 2025-2026, Mekion
 # SPDX-License-Identifier: Apache-2.0
 """Pre-Programmed routines for the Bimo Robotics Kit"""
 
@@ -6,8 +6,6 @@ from time import sleep, time
 
 
 class BimoRoutines():
-    """Pre-Programmed Bimo routines"""
-
     def __init__(self):
         self.base_routines = {
             "sit": self.sit_routine(),
@@ -39,7 +37,7 @@ class BimoRoutines():
             self.new_routines[name] = routine
 
         else:
-            raise Exception(f"Routine '{name}' is already registered!")
+            raise RuntimeError(f"ERROR: Routine '{name}' is already registered!")
 
     def get_routine(self, name):
         """Get routine by name"""
@@ -50,7 +48,7 @@ class BimoRoutines():
             return self.new_routines[name]
 
         else:
-            raise Exception(f"ERROR: Routine '{name}' not registered!")
+            raise RuntimeError(f"ERROR: Routine '{name}' not registered!")
 
     def sit_routine(self):
         poses = [

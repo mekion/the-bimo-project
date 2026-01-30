@@ -5,6 +5,7 @@
 from time import sleep, time
 import onnxruntime as onx
 import numpy as np
+import cv2
 
 from bimo import Bimo, BimoRoutines
 
@@ -23,14 +24,17 @@ def main():
     bimo.initialize()
     bimo_r.perform(bimo, "stand")
 
+    # Saves two images in current directory as example
+    cv2.imwrite("front.png", bimo.capture_image("front"))
+    cv2.imwrite("top.png", bimo.capture_image("top"))
+
     # Initialize buffers
-    orient_history = [[0.0, 0.0] for _ in range(4)]
-    gyro_history = [[0.0, 0.0, 0.0] for _ in range(4)]
-
     start_scaled = bimo.scale_value(bimo.stand_pose, bimo.servo_min, bimo.servo_max)
-    action_history = [start_scaled for _ in range(4)]
-    last_actions = list(bimo.stand_pose)  # Asumes bimo starts inference standing
 
+    action_history = [start_scaled for _ in range(4)]  # Bimo starts inference standing
+    orient_history = [[0.0, 0.0] for _ in range(4)]
+
+    last_actions = list(bimo.stand_pose)
     new_actions = [0.0 for _ in range(8)]
 
     # Main control loop 50ms
@@ -39,13 +43,13 @@ def main():
 
     while True:
         # Get state data
-        imu, _, _ = bimo.request_state_data()
+        state = bimo.request_state_data()
 
         # Update buffers
-        update_buffers(bimo, imu, last_actions, orient_history, gyro_history, action_history)
+        update_buffers(bimo, state["orient"], last_actions, orient_history, action_history)
 
-        # Calculate obervations array
-        observations = process_observations(bimo, orient_history, gyro_history, action_history)
+        # Calculate observations array
+        observations = process_observations(bimo, orient_history, action_history)
 
         # Perform NN inference
         inputs = {ses.get_inputs()[0].name: observations.reshape(1, -1)}
@@ -55,7 +59,7 @@ def main():
         new_actions = process_actions(bimo, model_actions, last_actions)
         last_actions = new_actions
 
-        # Execute
+        # Execute actions
         bimo.send_positions(new_actions)
 
         # Timestep sync
@@ -67,7 +71,7 @@ def main():
 def process_actions(bimo, model_actions, last_actions):
     """Converts NN action to degrees"""
     actions = np.clip(model_actions[0].reshape(-1), -3.0, 3.0)
-    actions = np.array(last_actions) + (actions * 1.6 / 3)  # Limit actions for stability
+    actions = np.array(last_actions) + (actions * 4 / 3)
     actions = actions.tolist()
 
     bimo.clip_actions(actions)
@@ -75,33 +79,27 @@ def process_actions(bimo, model_actions, last_actions):
     return actions
 
 
-def update_buffers(bimo, imu, last_actions, orient_hist, gyro_hist, act_hist):
+def update_buffers(bimo, state_orient, last_actions, orient_hist, act_hist):
     # Scale new readings
-    euler = bimo.quaternion_to_euler(imu[:4])
-    orient = bimo.scale_value(euler[:2], -1, 1)  # X, Y orient only
-    gyro = bimo.scale_value(imu[4:7], -2, 2)
+    orient = bimo.scale_value(state_orient[:2], -1, 1)  # X, Y orient only
     scaled_act = bimo.scale_value(last_actions, bimo.servo_min, bimo.servo_max)
 
     # Store into buffers
     orient_hist.pop(0)
     orient_hist.append(orient)
 
-    gyro_hist.pop(0)
-    gyro_hist.append(gyro)
-
     act_hist.pop(0)
     act_hist.append(scaled_act)
 
 
-def process_observations(bimo, orient_history, gyro_history, action_history):
+def process_observations(bimo, orient_history, action_history):
     observations = []
 
-    # Interleave: orient and gyro for each frame
-    for orient, gyro in zip(orient_history, gyro_history):
-        observations.extend(orient)  # Add orient (X, Y)
-        observations.extend(gyro)    # Add gyro (X, Y, Z)
+    # Add orient to history
+    for orient in orient_history:
+        observations.extend(orient)
 
-    # Add action history
+    # Add action to history
     for actions in action_history:
         observations.extend(actions)
 
