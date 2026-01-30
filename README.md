@@ -63,14 +63,15 @@ routines.perform(bimo, "stand")
 routines.perform(bimo, "sit")
 
 # Or command servo positions directly
-bimo.send_positions([0, 0, 0, 0, 60, 60, 30, 30])  # degrees
+bimo.send_positions([-30, -30, 0, 0, 60, 60, 30, 30])  # Degrees
 ```
+> WARNING: Always double-check manual positions! The above example sends a standing pose as an example AFTER sitting down, which would make the robot launch itself backwards!
 
 ### 3. Contribute & Collaborate (Near Future)
 - Add new routines or behaviors and submit to the community
 - Improve sim-to-real transfer
 - Optimize hardware design
-- Write tutorials and documentation
+- Create new Bimo based projects
 
 ---
 
@@ -85,6 +86,7 @@ the-bimo-project/
 ├── BimoAPI/                 # Python control library
 │   ├── setup.py             # Package setup (mekion-bimo)
 │   ├── README.md            # BimoAPI documentation
+│   ├── CHANGELOG.md         # BimoAPI version history
 │   ├── bimo/
 │   │   ├── __init__.py
 │   │   ├── bimo.py          # Core Bimo control class
@@ -106,6 +108,7 @@ the-bimo-project/
 │
 └── MCU/                     # Microcontroller firmware
     ├── README.md            # MCU protocol & setup
+    ├── CHANGELOG.md         # MCU version history
     └── micro_bimo.ino       # RP2040 firmware (Arduino IDE)
 
 ```
@@ -113,13 +116,9 @@ the-bimo-project/
 ---
 
 ## Roadmap
-
-**Q4 2025:**
-- Walking policy direct sim-to-real transfer
-- Turn and Stop (push survival) in progress
-
 **Q1-Q2 2026:**
 - Community development
+- Progressive Bimo updates
 - CE/FCC Certification
 
 **Late Q2 2026:**
