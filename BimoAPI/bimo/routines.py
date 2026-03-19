@@ -41,10 +41,10 @@ class BimoRoutines():
 
     def get_routine(self, name):
         """Get routine by name"""
-        if self.base_routines[name]:
+        if name in self.base_routines:
             return self.base_routines[name]
 
-        elif self.new_routines[name]:
+        elif name in self.new_routines:
             return self.new_routines[name]
 
         else:

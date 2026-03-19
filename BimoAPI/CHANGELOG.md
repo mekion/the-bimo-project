@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Automatic `stand_up` routine when robot falls down, regardeless of end orientation.
 
+### Fixed
+- `Bimo.available()` now correctly decodes alive responses from the MCU protocol (`int32(0)` means alive).
+- `BimoRoutines.get_routine()` now raises a clear runtime error for unknown routine names instead of bubbling up a `KeyError`.
+
 
 ## [0.9.5] - 2026-01-30
 
@@ -77,4 +81,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Basic integration example `api_example.py` showing control loop and model inference.
 
 > Note: This release corresponds to the original API submit.
-

@@ -172,13 +172,15 @@ class Bimo():
     def available(self):
         """Returns True if MCU ready."""
         self.mcu.write(struct.pack("2i", *[4, 2]))
-        status = struct.unpack("i", self.mcu.read(4))
+        data = self.mcu.read(4)
 
-        if status == 1:
-            return True
-
-        else:
+        if len(data) != 4:
             return False
+
+        # Firmware protocol returns int32(0) when alive.
+        status = struct.unpack("i", data)[0]
+
+        return status == 0
 
     def port(self):
         return self.mcu.port
