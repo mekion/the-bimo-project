@@ -3,7 +3,7 @@
  * Copyright (c) 2025-2026, Mekion
  * SPDX-License-Identifier: Apache-2.0
  *
- * Version: 0.9.5-Beta
+ * Version: 1.0.0
  * Target: RP2040
  */
 
@@ -40,13 +40,16 @@ int newPositions[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 const int servoMin[8] = {485, 1563, 1911, 1024, 456, 2041, 984, 984};
 const int servoMax[8] = {2533, 3611, 3072, 2185, 2055, 3640, 3112, 3112};
 
-// State Data, total 112B
-struct StateData {
+// State Data, total 114B
+struct __attribute__((packed)) StateData {
   // IMU 16B
   float imu[4];
   
   // Distance 8B
   uint16_t dist[4];
+
+  // Power source voltage 2B
+  uint16_t power = 0;
   
   // Servo feedback 88B
   uint16_t pos[8];  // 16B
@@ -60,6 +63,14 @@ struct StateData {
 
 void setup()
 {
+  // Servo power switch pin
+  pinMode(6, OUTPUT);
+  digitalWrite(6, LOW);
+
+  // Power source read pin
+  pinMode(A0, INPUT);
+  analogReadResolution(12);
+
   Serial.begin(921600);
   while (!Serial && millis() < 3000);
 
@@ -92,8 +103,8 @@ void setup()
   }
 
   // Wire1 & IMU
-  IMU_WIRE.setSDA(10);
-  IMU_WIRE.setSCL(11);
+  IMU_WIRE.setSDA(2);
+  IMU_WIRE.setSCL(3);
   IMU_WIRE.begin();
   IMU_WIRE.setClock(400000);
   delay(100);
@@ -103,6 +114,9 @@ void setup()
 
   // Launch core 1
   multicore_launch_core1(core1Entry);
+
+  // Enable servo power
+  digitalWrite(6, HIGH);
 }
 
 
@@ -110,33 +124,8 @@ void core1Entry()
 {
   while(true)
   {
-    // Measures new distance sensor readings
-    for (int i = 0; i < 4; i++)
-    {
-      mux.openChannel(i);
-      uint16_t d = distSensors[i].readRangeContinuousMillimeters();
-
-      if (distSensors[i].timeoutOccurred() || d >= 2000)
-      {
-        distBuffer[i] = 2000;  // Max range (mm)
-      }
-      else
-      {
-        distBuffer[i] = d;
-      }
-      mux.closeChannel(i);
-    }
-
-    // Writes new distances to state struct
-    core1Writing = true;
-    while(core0Reading) delay(0);
-
-    for (int i = 0; i < 4; i++)
-    {
-      state.dist[i] = distBuffer[i];
-    }
-
-    core1Writing = false;
+    updateDistanceReadings();
+    updatePowerReading();
   }
 }
 
@@ -238,6 +227,62 @@ void updateIMU()
 }
 
 
+void updateDistanceReadings()
+{
+  // Gets distance sensor readings
+  for (int i = 0; i < 4; i++)
+  {
+    mux.openChannel(i);
+    uint16_t d = distSensors[i].readRangeContinuousMillimeters();
+
+    if (distSensors[i].timeoutOccurred() || d >= 2000)
+    {
+      distBuffer[i] = 2000;  // Max range (mm)
+    }
+    else
+    {
+      distBuffer[i] = d;
+    }
+    mux.closeChannel(i);
+  }
+
+  // Refresh state distance data
+  core1Writing = true;
+  while(core0Reading) delay(0);
+
+  for (int i = 0; i < 4; i++)
+  {
+    state.dist[i] = distBuffer[i];
+  }
+
+  core1Writing = false;
+}
+
+
+void updatePowerReading()
+{
+  // Measures power source voltage
+  float v_avg = 0;
+  
+  for (int i = 0; i < 10; i++)
+  {
+    v_avg += analogRead(A0);
+  }
+
+  v_avg = 9.0 + ((v_avg / 10) - 2574.0) * 4.0 / (3721.0 - 2574.0);
+  v_avg = constrain(v_avg, 9.0, 13.0);
+
+  // Refresh state power reading
+  core1Writing = true;
+  while(core0Reading) delay(0);
+
+  // Pack as uint16
+  state.power = (uint16_t)((v_avg - 9.0) / 4.0 * 65535.0);
+
+  core1Writing = false;
+}
+
+
 void updateServoFeedback()
 {
   // Updates current servo feedback data
@@ -274,6 +319,6 @@ void applyNewPositions()
     }
     
     // Applies action
-    servoDriver.WritePosEx(i, pos, 3400, 254);
+    servoDriver.WritePosEx(i, pos, 3400, 0);
   }
 }

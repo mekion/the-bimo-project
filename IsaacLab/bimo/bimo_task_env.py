@@ -29,7 +29,7 @@ class BimoEnvCfg(DirectRLEnvCfg):
     # Environment settings
     decimation = 10
     episode_length_s = 10
-    observation_space = 13  # Overwritten by rsl_rl on startup
+    observation_space = 44  # Walk & Stop: 44 | Turn: 41. Overwritten by rsl_rl at runtime
     action_space = 8
     state_space = 0
     dt = 0.005
@@ -40,23 +40,23 @@ class BimoEnvCfg(DirectRLEnvCfg):
     # Reward weights
     # [orientation, height, joint pos, joint pos sigmoid, feet height, velocity, deviation]
     weights = {
-        "stop": [1, 1, 1, 1, 1, 0, 0],  # Learns to stop and sustain pushes (Experimental)
-        "walk": [1, 1, 1, 0, 2, 1, 1],  # Learns to walk
-        "turn": [1, 1, 1, 1, 2, 1, 2],  # Learns to turn (Experimental)
+        "stop": [1, 1, 0.6, 1, 2, 0, 0],  # Learns to stop and sustain pushes (Experimental)
+        "walk": [1, 1, 1, 0, 1, 1, 1],  # Learns to walk
+        "turn": [1, 1, 1, 0.6, 2, 1, 0],  # Learns to turn (Experimental)
     }
 
     # Head COM shift (Optional)
-    com_shift = 0.0175  # Forward (X) Positive
+    com_shift = 0.0  # Forward (X) Positive
 
     # Actuator settings
-    actuator_delay_max = 4  # Physics steps
-    actuator_delay_min = 1  # Physiscs steps
-    backlash = 1.6  # Degrees
+    actuator_delay_max = 1  # Physics steps
+    actuator_delay_min = 0  # Physics steps
+    backlash = 2.4  # Degrees
 
     # Simulation
     sim: SimulationCfg = SimulationCfg(dt=dt)
     scene: InteractiveSceneCfg = InteractiveSceneCfg(
-        env_spacing=2,
+        env_spacing=1,
         replicate_physics=True
     )
 
@@ -86,7 +86,7 @@ class BimoEnvCfg(DirectRLEnvCfg):
 
     # Randomization events: link mass and push forces
     push_velocities = {
-        "stop": {"x": (-0.4, 0.4), "y": (-0.4, 0.4), "z": (-0.4, 0.4)},
+        "stop": {"x": (-0.3, 0.3), "y": (-0.3, 0.3), "z": (-0.3, 0.3)},
         "walk": {"x": (-0.2, 0.2), "y": (-0.2, 0.2), "z": (-0.2, 0.2)},
         "turn": {"x": (-0.2, 0.2), "y": (-0.2, 0.2), "z": (-0.2, 0.2)},
     }
@@ -110,7 +110,7 @@ class BimoEnvCfg(DirectRLEnvCfg):
                 "asset_cfg": SceneEntityCfg("bimo", body_names="Head"),
                 "velocity_range": push_velocities[obj],
             },
-            interval_range_s=(0.0, 2.0),
+            interval_range_s=(2.0, 4.0),
         )
     }
 
@@ -134,37 +134,40 @@ class BimoEnv(DirectRLEnv):
         self.last_direction = torch.zeros(self.scene.num_envs, 8, device=self.device)
         self.gear_position = self.base_pose.clone()  # Applied joint targets (degrees)
 
-        # Action direction: turn left (-1) / right (+1)
+        # Action direction for turn: turn left (-1) / right (+1)
         half = self.scene.num_envs // 2
-
         self.act_direction = torch.cat((
             torch.ones(half, device=self.device),
             -torch.ones(self.scene.num_envs - half, device=self.device)
         ), dim=0)
 
-        # Parameter ranges for joints
-        self.frictions = torch.tensor([0.1 + x / 1000 for x in range(0, 201)], device=self.device)
-        self.torques = torch.tensor([2.7 + x / 1000 for x in range(0, 241)], device=self.device)
-        self.dampings = torch.tensor([0.6 + x / 1000 for x in range(0, 101)], device=self.device)
+        # Torque parameter range for joints
+        self.n_torques = 24
+        self.torque_range = torch.linspace(
+            2.7,   # 2.7 Nm (min voltage ~10V)
+            2.94,  # 2.94 Nm (max voltage ~12V)
+            self.n_torques,  # 0.01 steps
+            device=self.device
+        )
+        self.torque_idx = torch.zeros(self.scene.num_envs, dtype=torch.long, device=self.device)
 
         # Noise settings
         self.orient_noise = GaussianNoiseCfg(mean=0.0, std=0.015, operation="add")
-        self.gyro_noise = GaussianNoiseCfg(mean=0.0, std=0.01, operation="add")
         self.actuator_noise = GaussianNoiseCfg(mean=0.0, std=0.5, operation="add")
 
-        # Aactuator delays
+        # Actuator delays
         self.act_timer = 0
         self.act_delay = 0
 
-        # COM setting
+        # Single config set flag for all envs such as COM or torque
         self.com_set = False
 
         # History keeping
         self.orient_h = torch.zeros(self.scene.num_envs, 4, 3, device=self.device)
-        self.gyro_h = torch.zeros(self.scene.num_envs, 4, 3, device=self.device)
-
         self.act_hist = torch.zeros(self.scene.num_envs, 4, 8, device=self.device)
-        self.act_hist[:, :] = torch.clamp((self.base_pose[0] - self.servo_min) / (self.servo_max - self.servo_min) * 2 - 1, -1, 1)
+
+        # Bimo last world position log
+        self.last_position = torch.zeros(self.scene.num_envs, 3, device=self.device)
 
     def _setup_scene(self):
         # Articulations setup
@@ -179,6 +182,15 @@ class BimoEnv(DirectRLEnv):
         self.contact = ContactSensor(self.cfg.contact)
         self.scene.sensors["contact"] = self.contact
 
+        # Ground properties: ceramic tiles (adjust based on your surface type)
+        ground_mat = RigidBodyMaterialCfg(
+            static_friction=0.6,
+            dynamic_friction=0.5,
+            restitution=0.02,
+            friction_combine_mode="min",
+        )
+        spawn_ground_plane(prim_path="/World/ground", cfg=GroundPlaneCfg(physics_material=ground_mat))
+
         # Clone environments
         self.scene.clone_environments(copy_from_source=False)
         self.scene.filter_collisions(global_prim_paths=[])
@@ -186,9 +198,9 @@ class BimoEnv(DirectRLEnv):
         # Randomize foot pad material properties: TPU
         for i in range(self.scene.num_envs):
             for foot_name in ["FootLeft", "FootRight"]:
-                static = round(uniform(1.5, 2.0) * 10) / 10
-                dynamic = static - 0.2
-                restitution = round(uniform(0.05, 0.15) * 100) / 100
+                static = round(uniform(0.4, 0.9) * 10) / 10
+                dynamic = static - 0.1
+                restitution = round(uniform(0.0, 0.05) * 100) / 100
 
                 mat_cfg = RigidBodyMaterialCfg(
                     static_friction=static,
@@ -196,7 +208,7 @@ class BimoEnv(DirectRLEnv):
                     restitution=restitution,
                     compliant_contact_stiffness=5e4,
                     compliant_contact_damping=8e2,
-                    friction_combine_mode="average",
+                    friction_combine_mode="min",
                 )
 
                 mat_cfg.func(f"/World/ContactMaterials/env_{i}/{foot_name}_mat", mat_cfg)
@@ -204,15 +216,6 @@ class BimoEnv(DirectRLEnv):
                 mat_path = f"/World/ContactMaterials/env_{i}/{foot_name}_mat"
 
                 bind_physics_material(prim_path, mat_path)
-
-        # Ground properties: ceramic tiles (adjust based on your surface type)
-        ground_cfg = RigidBodyMaterialCfg(
-            static_friction=1.0,
-            dynamic_friction=0.5,
-            restitution=0.05,
-            friction_combine_mode="average",
-        )
-        spawn_ground_plane(prim_path="/World/ground", cfg=GroundPlaneCfg(physics_material=ground_cfg))
 
         # Light
         light_cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))
@@ -225,21 +228,18 @@ class BimoEnv(DirectRLEnv):
     def _get_observations(self):
         """Compute and return observations"""
 
-        # Get IMU data, add noise and scale to [-1, 1]
+        # Get IMU orientation data, add noise and scale to [-1, 1]
         self.imu_data = self.scene.sensors["imu"].data
         orient = quaternion_to_euler(self.imu_data.quat_w)
-
         orient = gaussian_noise(orient, self.orient_noise)
-        angular_vel = gaussian_noise(self.imu_data.ang_vel_b, self.gyro_noise)
-
         orient = scale_value(orient, -1.0, 1.0)
-        angular_vel = scale_value(angular_vel, -2, 2)
 
-        # Update IMU history and arrange for observations
-        self.update_imu_history(orient, angular_vel)
+        # Update IMU orientation history and arrange for observations
+        self.orient_h[:, :-1] = self.orient_h[:, 1:].clone()
+        self.orient_h[:, -1] = orient
 
-        imu_data = torch.cat((self.orient_h[:, :, :2], self.gyro_h), dim=2)
-        imu_data = imu_data.reshape(self.scene.num_envs, 20)
+        imu_data = self.orient_h.clone()
+        imu_data = imu_data.reshape(self.scene.num_envs, 12)
 
         # Get last commanded position and scale to [-1, 1]
         cmd_act = torch.clamp((self.cmd_actions - self.servo_min) / (self.servo_max - self.servo_min) * 2 - 1, -1, 1)
@@ -256,8 +256,9 @@ class BimoEnv(DirectRLEnv):
             obs_buffer = torch.cat((imu_data, proc_act), dim=1)
 
         else:
-            # Includes direction observation (turn i.e. left/right)
-            obs_buffer = torch.cat((self.act_direction.unsqueeze(1), imu_data, proc_act), dim=1)
+            # Includes direction observation, excludes Z from orientation
+            idx = [0, 1, 3, 4, 6, 7, 9, 10]
+            obs_buffer = torch.cat((self.act_direction.unsqueeze(1), imu_data[:, idx], proc_act), dim=1)
 
         obs_buffer = torch.round(obs_buffer, decimals=4)
 
@@ -266,7 +267,7 @@ class BimoEnv(DirectRLEnv):
     def _pre_physics_step(self, actions):
         # Calculates action delta
         actions_cpy = torch.clamp(actions.clone(), -3.0, 3.0)
-        self.cmd_actions += actions_cpy * 2 / 3
+        self.cmd_actions += actions_cpy * 4 / 3
 
         # Simulates backlash
         delta = self.cmd_actions - self.gear_position
@@ -278,14 +279,13 @@ class BimoEnv(DirectRLEnv):
             torch.clamp(torch.abs(delta) - self.cfg.backlash, min=0) * direction,
             delta,
         )
-
         self.gear_position += movement
         self.last_direction = torch.where(delta != 0, direction, self.last_direction)
 
         # Adds noise
         self.noisy_act = torch.clamp(gaussian_noise(self.gear_position, self.actuator_noise), self.servo_min, self.servo_max)
 
-        # Action delay 5ms - 20ms
+        # Action delay
         self.act_timer = 0
         self.act_delay = torch.randint(
             low=self.cfg.actuator_delay_min,
@@ -294,7 +294,7 @@ class BimoEnv(DirectRLEnv):
         ).item()
 
     def _apply_action(self):
-        # Applies NN action
+        # Applies NN action with delay
         if self.act_timer >= self.act_delay:
             self.bimo.set_joint_position_target(torch.deg2rad(self.noisy_act))
 
@@ -306,6 +306,7 @@ class BimoEnv(DirectRLEnv):
         euler_imu_orient = quaternion_to_euler(self.imu_data.quat_w)
         bimo_root_pos = self.bimo.data.root_pos_w
         lin_vel = self.bimo.data.root_com_vel_w
+        ang_vel = self.bimo.data.root_com_ang_vel_b
         contact_pos = self.scene.sensors["contact"].data.pos_w
         air_time = self.scene.sensors["contact"].data.current_air_time
 
@@ -314,9 +315,9 @@ class BimoEnv(DirectRLEnv):
         height_rew = height_reward(bimo_root_pos)
         position_rew = joint_position_reward(self.cmd_actions, self.base_pose, self.device)
         sig_extra = sigmoid_extra(self.cmd_actions, self.base_pose)
-        vel_rew = velocity_reward(lin_vel, self.act_direction, self.obj)
+        vel_rew = velocity_reward(lin_vel, ang_vel, self.act_direction, self.obj)
         feet_h_rew = feet_height_reward(air_time, contact_pos, 0.03, 150)
-        dev_rew = deviation_reward(self.scene.env_origins, bimo_root_pos, self.obj)
+        dev_rew = deviation_reward(self.scene.env_origins, bimo_root_pos, self.last_position, self.obj)
 
         # Compute weighted reward
         w = self.weights / torch.sum(self.weights, dim=1, keepdim=True)
@@ -326,13 +327,12 @@ class BimoEnv(DirectRLEnv):
                         + feet_h_rew * w[:, 4] + vel_rew * w[:, 5]
                         + dev_rew * w[:, 6])
 
+        # Update buffers
+        self.last_position[:] = self.bimo.data.root_pos_w
+
         return total_reward
 
     def _get_dones(self):
-        # Compute and return done flags
-        terminated = torch.zeros(self.scene.num_envs, dtype=torch.bool, device=self.device)
-        truncated = torch.zeros(self.scene.num_envs, dtype=torch.bool, device=self.device)
-
         # Check for time-out (episode length exceeded)
         truncated = self.episode_length_buf >= self.max_episode_length - 1
 
@@ -358,7 +358,7 @@ class BimoEnv(DirectRLEnv):
             env_ids = self.bimo._ALL_INDICES
         super()._reset_idx(env_ids)
 
-        # Shift COM if not done
+        # Set COM shift once
         if not self.com_set:
             physx_view = self.bimo.root_physx_view
             coms = physx_view.get_coms()
@@ -367,7 +367,7 @@ class BimoEnv(DirectRLEnv):
             physx_view.set_coms(coms, indices=env_ids.cpu())
             self.com_set = True
 
-        # Get default root pose and adds env origin position (for spacing)
+        # Get default root pose and add env origin position (for spacing)
         root_state = self.bimo.data.default_root_state[env_ids]
         root_state[:, :3] += self.scene.env_origins[env_ids]
 
@@ -375,51 +375,35 @@ class BimoEnv(DirectRLEnv):
         joint_pos = self.bimo.data.default_joint_pos[env_ids].clone()
         joint_vel = self.bimo.data.default_joint_vel[env_ids].clone()
 
-        # Randomze joint parameters
-        reset_ids = env_ids.flatten().long()
-        n_reset = reset_ids.shape[0]
-        n_joints = 8
+        # Choose new torque parameters
+        torque_vals = self.torque_range[self.torque_idx[env_ids]]
+        torque_vals = torque_vals.unsqueeze(1).expand(-1, 8)
 
-        fric_idx = torch.randint(0, self.frictions.size(0), (n_reset, n_joints), device=self.device)
-        torque_idx = torch.randint(0, self.torques.size(0), (n_reset, n_joints), device=self.device)
-        damp_idx = torch.randint(0, self.dampings.size(0), (n_reset, n_joints), device=self.device)
-
-        fric_samples = self.frictions[fric_idx]
-        torque_samples = self.torques[torque_idx]
-        damp_samples = self.dampings[damp_idx]
+        # Advance index wrapping at n_torques
+        self.torque_idx[env_ids] = (self.torque_idx[env_ids] + 1) % self.n_torques
 
         # Write data to sim
-        self.bimo.write_joint_friction_coefficient_to_sim(fric_samples, joint_ids=None, env_ids=env_ids)
-        self.bimo.write_joint_effort_limit_to_sim(torque_samples, joint_ids=None, env_ids=env_ids)
-        self.bimo.write_joint_damping_to_sim(damp_samples, joint_ids=None, env_ids=env_ids)
-
+        self.bimo.write_joint_effort_limit_to_sim(torque_vals, joint_ids=None, env_ids=env_ids)
         self.bimo.write_root_link_pose_to_sim(root_state[:, :7], env_ids)
         self.bimo.write_root_com_velocity_to_sim(root_state[:, 7:], env_ids)
         self.bimo.write_joint_state_to_sim(joint_pos, joint_vel, None, env_ids)
 
         # Reset buffers
         self.orient_h[env_ids] = 0.0
-        self.gyro_h[env_ids] = 0.0
-        self.act_hist[env_ids, :] = self.base_pose[0]
         self.cmd_actions[env_ids] = self.base_pose[0]
+        self.last_position[env_ids] = self.bimo.data.root_pos_w[env_ids]
+        self.gear_position[env_ids] = self.base_pose[env_ids]
+        self.last_direction[env_ids] = 0
 
-        # Not reset on purpose: makes model learn a better first step action
-        # self.gear_position[env_ids] = self.base_pose[env_ids]
-        # self.last_direction[env_ids] = 0
-
-    def update_imu_history(self, new_orient, new_gyro):
-        self.orient_h[:, :-1] = self.orient_h[:, 1:].clone()
-        self.gyro_h[:, :-1] = self.gyro_h[:, 1:].clone()
-
-        self.orient_h[:, -1] = new_orient
-        self.gyro_h[:, -1] = new_gyro
+        # Intentionally uses raw degree values, outside [-1, 1].
+        # Trains the policy to be robust to arbitrary action history at episode start,
+        # which significantly improves sim-to-real transfer.
+        self.act_hist[env_ids, :] = self.base_pose[0]
 
 
 @torch.jit.script
 def quaternion_to_euler(quat: torch.Tensor):
-    if not isinstance(quat, torch.Tensor):
-        quat = torch.tensor(quat)
-
+    """Convert quaternion to Euler angles"""
     # Normalize quaternion
     quat = quat / torch.norm(quat, dim=-1, keepdim=True)
 
@@ -435,7 +419,7 @@ def quaternion_to_euler(quat: torch.Tensor):
     sinp = 2 * (w * y - z * x)
     pitch = torch.where(
         torch.abs(sinp) >= 1,
-        torch.sign(sinp) * torch.tensor(torch.pi / 2),
+        torch.sign(sinp) * (torch.pi / 2),
         torch.asin(sinp)
     )
 
@@ -454,56 +438,55 @@ def scale_value(value: torch.Tensor, min_val: float, max_val: float):
 
 
 @torch.jit.script
-def scale_to_range(value: float, min_val: float, max_val: float):
-    # Gets original value from a number in range [-1, 1]
-    return min_val + (value + 1) * 0.5 * (max_val - min_val)
-
-
-@torch.jit.script
 def orientation_reward(euler_imu_orient, action: str, device: str):
-    # Calculate the sum of absolute Euler angles
+    """Orientation reward based on IMU data and task"""
     angle_sums = torch.zeros(euler_imu_orient.shape[0], device=device)
+    reward = angle_sums.clone()
 
     if action == "walk":
-        angle_sums = torch.sum(torch.abs(euler_imu_orient), dim=1)
+        # Scales Z for softer heading correction
+        absolute = torch.abs(euler_imu_orient)
+        absolute[:, 2] *= 0.5
+        angle_sums = torch.sum(absolute, dim=1)
 
     else:
-        # Excludes Z from reward to aid in turning
+        # Excludes Z from reward
         angle_sums = torch.sum(torch.abs(euler_imu_orient[:, :2]), dim=1)
 
-    # Calculate the reward
-    orientation_rew = torch.where(
+    # Full reward
+    reward = torch.where(
         angle_sums <= 0.95,
         1 - torch.sqrt(angle_sums / 0.95),
         torch.ones_like(angle_sums) * -1
     )
 
-    return orientation_rew
+    return reward
 
 
 @torch.jit.script
-def deviation_reward(og_pose, curr_pose, action: str = "walk"):
-    # X, Y distance deviation reward
-    x_dev = torch.abs(og_pose[:, 0] - curr_pose[:, 0])
-    y_dev = torch.abs(og_pose[:, 1] - curr_pose[:, 1])
+def deviation_reward(og_pose, curr_pose, last_pose, action: str = "walk"):
+    """X, Y distance deviation reward based on task"""
+    reward = torch.zeros_like(curr_pose[:, 0]).squeeze()
 
-    reward = torch.zeros_like(x_dev)
-
-    # Calculate reward
     if action == "walk":
-        # Y distance only for walking
-        reward = torch.where(
-            y_dev <= 0.3,
-            1 - torch.sqrt(y_dev / 0.3),
-            torch.ones_like(y_dev) * -1
-        )
+        # Rewards positive X delta, penalizes Y deviation
+        x_dev = curr_pose[:, 0] - last_pose[:, 0]
+        y_dev = torch.abs(og_pose[:, 1] - curr_pose[:, 1])
+
+        x_raw = torch.clamp(x_dev / 0.2, -1, 1)
+        y_raw = torch.clamp(-y_dev / 0.2, -1, 0)
+
+        reward = torch.clamp(x_raw + y_raw, -1, 1)
 
     else:
-        # X + Y distance for turning
+        # X + Y distance deviation penalization when turning/stopping
+        x_dev = torch.abs(curr_pose[:, 0] - og_pose[:, 0])
+        y_dev = torch.abs(curr_pose[:, 1] - og_pose[:, 1])
         dist = x_dev + y_dev
+
         reward = torch.where(
-            dist <= 0.3,
-            1 - torch.sqrt(dist / 0.3),
+            dist <= 2.0,
+            1 - dist / 2,
             torch.ones_like(dist) * -1
         )
 
@@ -555,46 +538,42 @@ def joint_position_reward(pos_buff, start_pos, device: str):
 
 
 @torch.jit.script
-def velocity_reward(vel_data, direction, action: str = "walk"):
-    """Calculates reward based on linear and angualr velocities"""
+def velocity_reward(lin_vel_d, ang_vel_d, direction, action: str = "walk"):
+    """Calculates reward based on linear and angular velocities"""
     reward = torch.zeros_like(direction)
 
     if action == "walk":
-        vx = vel_data[:, 0]
-        vy = torch.abs(vel_data[:, 1])
+        # Rewards X linear velocity, penalizes Y angular oscillation
+        lin_v_x = lin_vel_d[:, 0]
+        ang_v_y = ang_vel_d[:, 1]
+        target_speed = 0.1  # m/s
 
-        rew_lin = torch.where(
-            vx > 0,
-            torch.clamp(vx / (vx + vy + 1e-8), 0, 1.0),
-            0,
-        )
+        rew_lin = torch.clamp(torch.tanh(lin_v_x / target_speed), -1, 1)
+        rew_ang = torch.clamp(-torch.abs(ang_v_y) / 2, -1, 0)
 
-        rew_ang = torch.clamp(- torch.abs(vel_data[:, 4]) / 2, -1, 0)
-
-        reward = 0.5 * rew_lin + 0.5 * rew_ang
+        reward = 0.3 * rew_lin + 0.7 * rew_ang
 
     else:
-        z_ang_vel = vel_data[:, 5]
+        # Rewards Z angular velocity (turn)
+        ang_v_x = ang_vel_d[:, 0]
+        ang_v_y = ang_vel_d[:, 1]
+        ang_v_z = ang_vel_d[:, 2]
 
-        # -1 = Turn Left, +1 Turn Right | Turning left velocity +Z
-        correct_vel = torch.sign(z_ang_vel) != torch.sign(direction)
+        # Turn right (+1) / Left (-1) mapped to angular Z direction
+        target_ang_v = 0.8 * torch.sign(direction) * -1
+        rew_z = torch.clamp(torch.tanh(ang_v_z / target_ang_v), -1.0, 1.0)
 
-        rew_ang = torch.where(
-            correct_vel,
-            torch.clamp(torch.abs(z_ang_vel) / 0.2, 0, 1.0),
-            -1,
-        )
+        # Penalize pitch/roll oscillation
+        rew_ang = torch.clamp(-torch.abs(ang_v_x + ang_v_y) / 2, -1.0, 0.0)
 
-        rew_ang_penalty = torch.clamp(- torch.abs(vel_data[:, 4]) / 2, -1, 0)
-
-        reward = 0.5 * rew_ang + 0.5 * rew_ang_penalty
+        reward = 0.5 * rew_z + 0.5 * rew_ang
 
     return reward
 
 
 @torch.jit.script
 def sigmoid_extra(pos_buff, start_pos):
-    """Extra reward when actuators < 10 DEG difference from ideal"""
+    """Extra reward when actuators closer than 10 degres from ideal"""
     diff = torch.abs(pos_buff - start_pos)
     greatest_diff, _ = torch.max(diff, dim=1)
 

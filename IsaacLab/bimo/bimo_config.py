@@ -50,14 +50,15 @@ BIMO_CFG = ArticulationCfg(
     actuators={
         "joints": DCMotorCfg(
             joint_names_expr=[".*"],
-            stiffness=40.0,
-            damping=0.65,
+            stiffness=35,
+            damping=0.8,
             armature=0.08,
+            friction=0.01,
             saturation_effort=2.94,
             effort_limit=2.94,
             effort_limit_sim=2.94,
-            velocity_limit=2.7,
-            velocity_limit_sim=2.7,
+            velocity_limit=4.71,
+            velocity_limit_sim=4.71,
         ),
     },
 )

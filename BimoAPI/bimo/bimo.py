@@ -2,7 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 """Core Bimo Robotics Kit control class"""
 
+from .routines import BimoRoutines
 from time import sleep
+import numpy as np
 import serial
 import struct
 import math
@@ -15,7 +17,7 @@ class Bimo():
     def __init__(self):
         # MCU comms
         self.mcu = None
-        self.state_format = "<4f4H8h8h8h8H8h8B"
+        self.state_format = "<4f4H1H8H8h8h8H8h8B"
         self.state_size = struct.calcsize(self.state_format)
 
         # Cameras
@@ -25,13 +27,19 @@ class Bimo():
         # Servos
         self.servo_max = [90, 90, 90, 12, 140, 140, 93, 93]
         self.servo_min = [-90, -90, -12, -90, 0, 0, -93, -93]
-        self.sit_pose = [-45, -45, 0, 0, 140, 140, 93, 93]
+        self.sit_pose = [-47.5, -47.5, 0, 0, 140, 140, 93, 93]
         self.stand_pose = [-30, -30, 0, 0, 60, 60, 30, 30]
-        self.centers = [1509, 2587, 2048, 2048, 456, 3640, 2048, 2048]
+        self.centers = [1508, 2588, 2048, 2048, 456, 3640, 2048, 2048]
 
         # IMU calibration offsets
         self.x_orient = 0
         self.y_orient = 0
+
+        # Heading lock
+        self.base_heading = None
+
+        # Routines
+        self.routines = BimoRoutines()
 
     # ===== UTILITY =====
     def initialize(self, calibrate=False, baudrate=921600, timeout=0.2,
@@ -74,16 +82,16 @@ class Bimo():
         self.calibrate_servos()
 
         # Calibrates ankles on centered position
-        print("Lift robot from ground and remove the leg guide. Ankles will move and calibrate.")
+        print("Lift robot in the air and remove the leg guide. Ankles will move and calibrate.")
         input("Press Enter to continue...")
 
-        curr_pose = [2048 for _ in range(8)]
+        raw_curr_pose = self.deg2servo(self.sit_pose)
         ankle_diff = int(92.54 / 360 * 4095)
 
-        curr_pose[6] += ankle_diff
-        curr_pose[7] -= ankle_diff
+        raw_curr_pose[6] += ankle_diff
+        raw_curr_pose[7] -= ankle_diff
 
-        self.send_positions(self.servo2deg(curr_pose))
+        self.send_positions(self.servo2deg(raw_curr_pose))
         sleep(3)
         self.calibrate_servos()
 
@@ -92,7 +100,7 @@ class Bimo():
         print("INFO: Bimo Calibration Successful!")
 
     def update_imu_offsets(self):
-        """Updates IMU offset"""
+        """Updates IMU offsets"""
         print("INFO: Calculating IMU offsets.")
         x_total = 0
         y_total = 0
@@ -106,9 +114,29 @@ class Bimo():
         self.x_orient = -x_total / 10.0
         self.y_orient = -y_total / 10.0
 
+    def lock_heading(self):
+        """
+        Sets the current yaw as the heading reference.
+        Subsequent state reads return yaw as deviation from this point (radians).
+        Call once before starting a behaviour that requires heading correction.
+        """
+        state = self.request_state_data()
+        self.base_heading = state["orient"][2]
+
+    def unlock_heading(self):
+        """
+        Clears the heading reference.
+        Subsequent state reads return raw yaw from the IMU.
+        """
+        self.base_heading = None
+
+    def perform(self, name):
+        """Executes pre-programmed routine"""
+        self.routines.perform(self, name)
+
     # ===== MCU COMMS =====
     def init_mcu_comms(self, baudrate, timeout):
-        # Tries to connect to MCU 5 times
+        """Attempts serial connection to MCU across known ports."""
         for attempt in range(5):
             for port in range(5):
                 try:
@@ -130,15 +158,16 @@ class Bimo():
 
     def request_state_data(self):
         """
-            Returns robot state dict
+        Returns robot state dict
 
-            "orient" -> Euler angles
-            "distances" -> [Front, Back, Right, Left] (m)
-            "servo_pos" -> Degrees
-            "servo_speed" -> Rad/s
-            "servo_load" -> Nm
-            "servo_voltage" -> V
-            "servo_current" -> A
+        "orient" -> Euler angles (rad)
+        "distances" -> [Front, Back, Right, Left] (m)
+        "power" -> Power source voltage [9.0V - 13.0V]
+        "servo_pos" -> Degrees
+        "servo_speed" -> Rad/s
+        "servo_load" -> Nm
+        "servo_voltage" -> V
+        "servo_current" -> A
             "servo_temp" -> Celsius
 
         """
@@ -149,16 +178,23 @@ class Bimo():
         data = self.mcu.read(self.state_size)
         unpacked = struct.unpack(self.state_format, data)
 
-        return {
+        state = {
             "orient": self.quaternion_to_euler(unpacked[:4]),
             "distances": [d * 0.001 for d in unpacked[4:8]],
-            "servo_pos": self.servo2deg(unpacked[8:16]),
-            "servo_speed": [d * 0.088 * (math.pi / 180) for d in unpacked[16:24]],
-            "servo_load": [d * 2.942 / 1000 for d in unpacked[24:32]],
-            "servo_voltage": [d * 0.1 for d in unpacked[32:40]],
-            "servo_current": [d * 0.0065 for d in unpacked[40:48]],
-            "servo_temp": list(unpacked[48:56]),
+            "power": round(9 + (unpacked[8] / 65535.0) * 4.0, 2),
+            "servo_pos": self.servo2deg(unpacked[9:17]),
+            "servo_speed": [d * 0.088 * (math.pi / 180) for d in unpacked[17:25]],
+            "servo_load": [d * 2.942 / 1000 for d in unpacked[25:33]],
+            "servo_voltage": [d * 0.1 for d in unpacked[33:41]],
+            "servo_current": [d * 0.0065 for d in unpacked[41:49]],
+            "servo_temp": list(unpacked[49:57]),
         }
+
+        # Updates heading if locked
+        if self.base_heading is not None:
+            state["orient"][2] = ((state["orient"][2] - self.base_heading) + np.pi) % (2 * np.pi) - np.pi
+
+        return state
 
     def send_positions(self, actions):
         """Sends list of actions in degrees to MCU"""
@@ -183,11 +219,12 @@ class Bimo():
         return status == 0
 
     def port(self):
+        """Returns the active MCU serial port name."""
         return self.mcu.port
 
     # ===== CAMERAS =====
     def init_cameras(self, resolution):
-        """Load Bimo cameras."""
+        """Loads Bimo cameras."""
         resolutions = [
             (160, 120),
             (320, 240),
@@ -235,7 +272,7 @@ class Bimo():
             cam.set(cv2.CAP_PROP_FRAME_HEIGHT, resolution[1])
             cam.set(cv2.CAP_PROP_FPS, 30)  # Fixed 30FPS for MJPG
 
-        print(f"INFO: Bimo Cameras Ready!")
+        print("INFO: Bimo Cameras Ready!")
 
     def capture_image(self, camera="front"):
         """Captures single frame. Returns (H, W, 3) BGR numpy array."""
@@ -283,7 +320,7 @@ class Bimo():
         ]
 
     def clip_actions(self, array):
-        """Clip actions inplace, in degrees"""
+        """Clip actions in place, in degrees"""
         for i in range(len(array)):
             if array[i] < self.servo_min[i]:
                 array[i] = self.servo_min[i]

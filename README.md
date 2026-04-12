@@ -1,20 +1,19 @@
 # Bimo Robotics Kit – Open-Source Bipedal Robotics Platform
 
 ![Bimo Robotics Kit](assets/bimo_main.webp)
-Bimo is a **45 cm tall bipedal robot** created to democratize bipedal robotics research in a compact platform. Get started with pre-built kits or customize the design. Includes complete CAD files (coming soon), RP2040 firmware, Isaac Lab training environment, and a Python API for real-time control and model deployment
+Bimo is an **open-source bipedal robot** created to make bipedal robotics research more accessible in a compact platform. Get started with pre-built kits or customize the design. Includes complete CAD files (coming soon), RP2040 firmware, Isaac Lab training environment, and a Python API for real-time control and model deployment.
 
-**[Product Page](https://www.mekion.com)** • **[Discord Community](https://discord.gg/9uXsArwXHG)** • **[Roadmap](https://www.mekion.com/project/#roadmap)**
+**[Product Page](https://www.mekion.com)** • **[Discord Community](https://discord.gg/9uXsArwXHG)**
 
 ---
 
 ### Key Highlights
 
-- **Fully Open Source:** CAD files (coming soon), firmware, and code. Build, modify, and improve.
-- **Sim-to-Real Ready:** Train policies in Isaac Lab, deploy directly on hardware.
-- **Baseline Walking Model:** Deployed directly from simulation, without adaptation.
-- **Community-Driven:** Share your implementations and improvements with the community.
-- **Two Configurations:** Available as a fully assembled SLS kit or a DIY (FDM) printable edition.
-- **Fast Training:** Vectorized Isaac Lab environments to train policies in <20 minutes (depends on hardware).
+- **Fully Open Source:** CAD files (coming soon), firmware, simulation and deployment code.
+- **Sim-to-Real Ready:** train policies in Isaac Lab, deploy directly on hardware.
+- **Baseline Walking Model:** deployed directly from simulation, without adaptation.
+- **Two Configurations:** available as a fully assembled SLS kit or a DIY 3D-printable edition.
+- **Fast Training:** vectorized Isaac Lab environment to train policies in <15 minutes (depends on hardware).
 
 ![Bimo Walk](assets/bimo_walk.webp)
 
@@ -28,50 +27,70 @@ Bimo is a **45 cm tall bipedal robot** created to democratize bipedal robotics r
 | **Weight** | ~1.6 kg |
 | **Actuators** | 8 servo motors (STS-3215) |
 | **Sensors** | BNO08x 9-DOF IMU, 4× TOF distance sensors, 2x 180ºFOV Cameras |
-| **Microcontroller** | Custom PCB, based on the RP2040 |
-| **Communication** | Direct through USB |
-| **Power** | 12V Includes adapters for different power supplies |
-| **Compute** | On-board MCU, offboard inference via Python API (compatible with SBCs)|
-| **Design** | Hip-head biped for simpler mechanics, includes empty head volume for custom hardware |
+| **Controller** | Custom RP2040-based board compatible with SBCs through data and power connectors |
+| **Communication** | USB 2.0 (PC or SBC) |
+| **Power** | 9V-13V. Includes adapters to Banana Plugs and Power Jack. Sold without battery: battery-compatible |
+| **Compute** | Offboard on PC, or onboard using an SBC mounted inside the head |
+| **Design** | Hip-head biped. Empty head cavity with 4 x M3 mounting points, designed to house an SBC or custom hardware|
 | **Control Loop** | 20 Hz|
 
 ---
 
-## What You Can Do
+## Quick Start Guide
 
-### 1. Train RL Policies
-Use **Isaac Lab + RSL-RL** to train bipedal behaviors in simulation.
+> **Prerequisites:** This guide assumes you have an SLS kit (fully assembled, firmware pre-loaded) or a completed DIY build with firmware already flashed. If not, see the [MCU Instructions](MCU/README.md) for flashing instructions.
+
+
+### Step 1: Install the Python API
+
+```bash
+cd BimoAPI/
+pip install -e .
+```
+
+See [BimoAPI](BimoAPI/README.md) for full API documentation.
+
+
+### Step 2: Stand Up & Verify
+
+Write a minimal Python script to test basic functionality:
+
+```python
+from bimo import Bimo
+
+bimo = Bimo()
+bimo.initialize()  # Connects MCU + cameras, moves to sit, calibrates IMU
+bimo.perform("stand")
+```
+
+> **DIY Kit:** Run `bimo.initialize(calibrate=True)` on first use to calibrate servos. See the DIY Manual (coming soon) for full assembly and calibration instructions.
+
+
+### Step 3: Train & Test Walking Model
+
+Follow the [IsaacLab Instructions](IsaacLab/README.md), then train the walking model:
 
 ```bash
 cd IsaacLab/
 ./isaaclab.sh -p scripts/reinforcement_learning/rsl_rl/train.py --task Bimo --num_envs 2048 --headless
 ```
 
-Export trained policies as ONNX and run inference on your robot in real-time.
-
-### 2. Deploy Pre-Programmed Routines
-Control your robot with Python, no ML required.
+Export the trained policy as ONNX, then deploy using the `api_example.py` script:
 
 ```python
-from bimo import Bimo, BimoRoutines
+import onnxruntime as ort
+from bimo import Bimo
 
 bimo = Bimo()
 bimo.initialize()
+bimo.perform("stand")
+bimo.lock_heading()  # Required for walking model
 
-routines = BimoRoutines()
-routines.perform(bimo, "stand")
-routines.perform(bimo, "sit")
+session = ort.InferenceSession("policy.onnx",
+    providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
 
-# Or command servo positions directly
-bimo.send_positions([-30, -30, 0, 0, 60, 60, 30, 30])  # Degrees
+# See BimoAPI/examples/api_example.py for the full inference loop
 ```
-> WARNING: Always double-check manual positions! The above example sends a standing pose as an example AFTER sitting down, which would make the robot launch itself backwards!
-
-### 3. Contribute & Collaborate (Near Future)
-- Add new routines or behaviors and submit to the community
-- Improve sim-to-real transfer
-- Optimize hardware design
-- Create new Bimo based projects
 
 ---
 
@@ -121,11 +140,11 @@ the-bimo-project/
 - Progressive Bimo updates
 - CE/FCC Certification
 
-**Late Q2 2026:**
+**Q3 2026:**
 - First kits ship: SLS, DIY options available
 - Manuals, DIY assembly tutorials, CAD models
 
-**Q3 2026:**
+**Q4 2026:**
 - R&D Team Constitution
 - Project Maintenance & Development
 - Contribution setup

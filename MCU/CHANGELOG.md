@@ -4,12 +4,19 @@ All notable changes to the Bimo Robotics Kit MCU firmware will be documented in 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+---
+
+## [1.0.0] - 2026-04-12
+
 ### Added
-- Serial availability checks before reading a specific amount of data.
-- Total system voltage reading (useful for battery-powered implementations).
-- Total servo current draw reading from switch IC.
-- General serial communications robustness improvements.
+- State Data packing attribute to ensure no padding is added.
+- State Data system voltage reading `power` (useful for battery-powered implementations).
+- System voltage reading function for Core 1 `updatePowerReading()`.
+- Servo power switch control via Pin 6.
+
+### Changed
+- Updated acceleration value in `servoDriver.WritePosEx()` to 0 (improves sim-to-real).
+- Moved Distance Sensor reading to separate function `updateDistanceReadings()`.
 
 ---
 

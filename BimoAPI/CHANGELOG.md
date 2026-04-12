@@ -5,18 +5,30 @@ All notable changes to the Bimo Robotics Kit Python API will be documented in th
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-### Added
-- State data additions:
-  - Total servo current draw reading from switch IC on PCB.
-  - Voltage reading from main power source on PCB.
+---
 
-- Automatic `stand_up` routine when robot falls down, regardeless of end orientation.
+## [1.0.0] - 2026-04-12
+
+### Added
+- State Data `power` field, representing current system voltage (useful in battery-powered projects).
+- `Bimo.lock_heading()` and `Bimo.unlock_heading()` allow to read Yaw value as a deviation from the Yaw at the moment of the Lock call. Unlocking makes Yaw reading the raw value from the IMU again.
+- `Bimo.perform()` now allows calling a routine without having to separately initialize the `BimoRoutines()` class. Everything is now controlled from the main `Bimo()` class.
+
+### Changed
+- `BimoRoutines()` methods now have to be called as `Bimo.routines.method()`. `Bimo()` now creates a `BimoRoutines()` object at initialization.
+- `Bimo.sit_pose` hip position has been corrected to -47.5 degrees.
+- `Bimo.centers` hip values have been corrected.
+- `Bimo.request_state_data()` now includes the heading lock update.
+- `Bimo.state_format` has been updated to account for the new `power` reading.
+- Updated the `stand` routine.
+- Updated the `api_example.py` script to include the latest updates.
 
 ### Fixed
 - `Bimo.available()` now correctly decodes alive responses from the MCU protocol (`int32(0)` means alive).
 - `BimoRoutines.get_routine()` now raises a clear runtime error for unknown routine names instead of bubbling up a `KeyError`.
+- `Bimo.calibrate()` now correctly calibrates servos after lifting robot up for ankle calibration.
 
+---
 
 ## [0.9.5] - 2026-01-30
 

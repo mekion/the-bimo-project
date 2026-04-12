@@ -14,35 +14,34 @@ This installs the `mekion-bimo` package and dependencies (`pyserial`, `numpy`, `
 
 ## Quick Start
 
-### Basic usage
+### Basic Usage
 
 ```python
-from bimo import Bimo, BimoRoutines
+from bimo import Bimo
 
 bimo = Bimo()
 bimo.initialize()  # Connect MCU + cameras, go to sit, calibrate IMU
 
-routines = BimoRoutines()
-routines.perform(bimo, "stand")  # Stand up
-routines.perform(bimo, "sit")    # Sit down
+bimo.perform("stand")  # Stand up
+bimo.perform("sit")    # Sit down
 
 # Send manual servo positions (degrees)
 bimo.send_positions([-30, -30, 0, 0, 60, 60, 30, 30])
 ```
 > WARNING: Always double-check manual positions! The above example sends a standing pose as an example AFTER sitting down, which would make the robot launch itself backwards!
 
-### ONNX policy loop (see `api_example.py`)
+### ONNX Policy Loop (`api_example.py`)
 
 ```python
 from time import sleep, time
 import onnxruntime as ort
 import numpy as np
-from bimo import Bimo, BimoRoutines
+from bimo import Bimo
 
 bimo = Bimo()
 bimo.initialize()
-routines = BimoRoutines()
-routines.perform(bimo, "stand")
+bimo.perform("stand")
+bimo.lock_heading()  # Required for walking model
 
 session = ort.InferenceSession(
     "policy.onnx",
@@ -53,50 +52,56 @@ period = 0.05
 t1 = time()
 
 while True:
-    state = bimo.request_state_data()  # IMU + distances + servo feedback
+    state = bimo.request_state_data()  # Full state dictionary
     # ... build observations from orientation + action history ...
     actions = session.run(None, {session.get_inputs()[0].name: obs.reshape(1, -1)})
     # ... post-process actions ...
-    bimo.send_positions(new_actions)          # Degrees
+    bimo.send_positions(new_actions)  # Degrees
 
     t1 += period
     sleep_dt = max(0, t1 - time())
     sleep(sleep_dt)
 ```
+> NOTE: `lock_heading()` must be called after standing. The walking model observes yaw as deviation from this reference point. Without it, heading correction will fail.
 
 
-## Public API
+## API Reference
 
-### `Bimo` – Robot control
+### `Bimo`: robot control
 
 Main entry point to talk to the robot.
 
-**Attributes**
+**Main Attributes**
 
 - `sit_pose`: default sitting pose joint configuration (degrees).
 - `stand_pose`: default standing pose joint configuration (degrees).
 - `servo_min`, `servo_max`: per-joint limits (degrees).
 
-**Methods you normally use**
 
+**Main Methods**
 
 | Method | Description |
 | :-- | :-- |
 | `initialize(calibrate=False, baudrate=921600, timeout=0.2, camera_resolution=(1280, 720))` | Connect to MCU and cameras, optionally run servo calibration, move to sit pose, calibrate IMU. |
 | `request_state_data()` | Return a dict with orientation, distances, and servo feedback. |
 | `send_positions(actions)` | Send 8 joint positions in degrees to the MCU. |
+| `perform(name)` | Execute a named routine directly. Built-in: "stand", "sit". |
+| `lock_heading()` | Set current yaw as heading reference. Required before running walking models. |
+| `unlock_heading()` | Clear heading reference, restoring raw IMU yaw. |
+| `clip_actions(array)` | Clamp a degree list in-place to per-joint servo limits. |
 | `capture_image(camera="front")` | Capture a single frame from `"front"` or `"top"` camera as a BGR `numpy` array. |
 | `scale_value(values, mins, maxs)` | Scale a value or list from `[min, max]` to `[-1, 1]` (used for observations). |
 | `available()` | Check if MCU is alive and responding. |
 | `port()` | Return the serial port used to connect to the MCU. |
 
-**`request_state_data()` structure**
+**State Data Structure**
 
 ```python
 state = bimo.request_state_data()
 
 state["orient"]         # [roll, pitch, yaw] in radians (Euler)
 state["distances"]      # [front, back, right, left] in meters
+state["power"]          # Current system voltage reading (V)
 state["servo_pos"]      # 8 joint positions in degrees
 state["servo_speed"]    # 8 joint speeds in rad/s
 state["servo_load"]     # 8 joint loads in Nm (approximate)
@@ -106,32 +111,34 @@ state["servo_temp"]     # 8 joint temperatures in °C
 ```
 
 
-### `BimoRoutines` – Pre-programmed motions
+### `BimoRoutines`: pre-programmed motions
 
 Time-based sequences running at 50 ms per step.
 
-**Built-in routines**
+**Built-in Routines**
 
-- `"stand"` – transition from sit to stable stand.
-- `"sit"` – transition from stand to stable sit.
+Built-in routines ("stand", "sit") are available directly via bimo.perform(). For custom routines, instantiate BimoRoutines separately and register them with add_routine() before calling bimo.perform().
+
+- `"stand"` Transition from sit to stable stand.
+- `"sit"` Transition from stand to stable sit.
 
 **Methods**
 
-
 | Method | Description |
 | :-- | :-- |
-| `perform(bimo, name)` | Execute a named routine (`"stand"`, `"sit"`, or a custom one). |
 | `add_routine(name, poses)` | Register a custom routine as a list of 8‑element pose lists (degrees). |
 
-**Example custom routine**
+> NOTE: custom routines are added via `bimo.routines.add_routine(name, poses)` and executed with `bimo.perform(name)`.
+
+
+**Example Custom Routine**
 
 ```python
-from bimo import Bimo, BimoRoutines
+from bimo import Bimo
 
 bimo = Bimo()
 bimo.initialize()
 
-routines = BimoRoutines()
 wobble_head = [
     bimo.stand_pose,
     [-32, -32, 0, 0, 60, 60, 30, 30],
@@ -145,8 +152,8 @@ wobble_head = [
     [-32, -32, 0, 0, 60, 60, 30, 30],
 ] * 5
 
-routines.add_routine("wobble", wobble_head)
-routines.perform(bimo, "wobble")
+bimo.routines.add_routine("wobble", wobble_head)
+bimo.perform("wobble")
 ```
 
 
@@ -169,7 +176,7 @@ top = bimo.capture_image("top")
     - Check `/dev/ttyACM*` and permissions.
 - **Servos not moving**:
     - Verify robot power and servo wiring.
-    - Run `bimo.initialize(calibrate=True)` once after assembly.
+    - Run `bimo.initialize(calibrate=True)` once after finishing the DIY build.
 - **Cameras not found**:
     - Ensure two UVC cameras are connected.
     - Check `/dev/video*` and supported resolutions.

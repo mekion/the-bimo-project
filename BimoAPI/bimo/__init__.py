@@ -6,4 +6,4 @@ from .bimo import Bimo
 from .routines import BimoRoutines
 
 __all__ = ["Bimo", "BimoRoutines"]
-__version__ = "0.9.5"
+__version__ = "1.0.0"
