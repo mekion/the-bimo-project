@@ -43,7 +43,7 @@ The SLS version kit (fully assembled) ships with pre-loaded firmware and calibra
 
 ## Controller Board Overview & Pinout
 
-![Bimo Controller Board Pinout](assets/pcb.png)
+![Bimo Controller Board Pinout](../assets/pcb.png)
 
 | Component | Notes |
 | :-- | :-- |
