@@ -3,6 +3,8 @@
 ![Bimo Robotics Kit](assets/bimo_main.webp)
 Bimo is an **open-source bipedal robot** created to make bipedal robotics research more accessible in a compact platform. Get started with pre-built kits or customize the design. Includes complete CAD files (coming soon), RP2040 firmware, Isaac Lab training environment, and a Python API for real-time control and model deployment.
 
+[![oosmetrics - Top 10 RL Acceleration](https://api.oosmetrics.com/api/v1/badge/achievement/5f8f338f-939d-4344-9123-d893b9468fda.svg)](https://oosmetrics.com/repo/mekion/the-bimo-project)
+
 **[Product Page](https://www.mekion.com)** • **[Discord Community](https://discord.gg/9uXsArwXHG)**
 
 ---
