@@ -40,8 +40,7 @@ Bimo is an **open-source bipedal robot** created to make bipedal robotics resear
 
 ## Quick Start Guide
 
-> **Prerequisites:** This guide assumes you have an SLS kit (fully assembled, firmware pre-loaded) or a completed DIY build with firmware already flashed. If not, see the [MCU Instructions](MCU/README.md) for flashing instructions.
-
+> **Prerequisites:** This guide assumes you have an SLS kit (ships fully assembled, firmware pre-loaded and pre-calibrated) or a completed DIY build with firmware already flashed. If not, see the [MCU Instructions](MCU/README.md) for flashing instructions.
 
 ### Step 1: Install the Python API
 
@@ -53,7 +52,16 @@ pip install -e .
 See [BimoAPI](BimoAPI/README.md) for full API documentation.
 
 
-### Step 2: Stand Up & Verify
+### Step 2: Connect Data & Power Cables
+
+Unscrew the **7 screws** on the bottom plate to open the head.
+
+**Data cable:** Connect the 3m USB data cable to the **DATA port** on the PCB. See the [MCU documentation](MCU/README.md) for port location. Route the cable through any of the hatches for easier use.
+
+**Power cable:** Connect the power adapter cable (included) into the **XT-30 port**. This allows plugging in an external power supply via standard banana plug cables (not included).
+
+
+### Step 3: Stand Up & Verify
 
 Write a minimal Python script to test basic functionality:
 
@@ -64,11 +72,14 @@ bimo = Bimo()
 bimo.initialize()  # Connects MCU + cameras, moves to sit, calibrates IMU
 bimo.perform("stand")
 ```
+> Ensure the cables connected between Bimo and the host PC are not pulling down on it, as this can interfere with the stand-up routine.
 
-> **DIY Kit:** Run `bimo.initialize(calibrate=True)` on first use to calibrate servos. See the DIY Manual (coming soon) for full assembly and calibration instructions.
+> **Powering Up:** After connecting the USB Data cable to the host PC, allow ~5s for the MCU to boot and switch-on the servo power rail before running any API scripts.
+
+> **DIY Kit Only:** Run `bimo.initialize(calibrate=True)` on first use to calibrate servos. See the DIY Manual (coming soon) for full assembly and calibration instructions.
 
 
-### Step 3: Train & Test Walking Model
+### Step 4: Train & Test Walking Model
 
 Follow the [IsaacLab Instructions](IsaacLab/README.md), then train the walking model:
 
