@@ -31,6 +31,7 @@ def main():
     # Initialize buffers
     start_scaled = bimo.scale_value(bimo.stand_pose, bimo.servo_min, bimo.servo_max)
 
+    # History kept for experimentation, not needed for current walking model
     action_history = [start_scaled for _ in range(4)]  # Bimo starts inference standing
     orient_history = [[0.0, 0.0, 0.0] for _ in range(4)]
     last_actions = list(bimo.stand_pose)
@@ -95,20 +96,12 @@ def update_buffers(bimo, state_orient, last_actions, orient_hist, act_hist):
 def process_observations(bimo, orient_history, action_history):
     """Builds flat observation array from orientation and action histories."""
 
-    observations = []
-
-    # Add orient to history
-    for orient in orient_history:
-        observations.extend(orient)
-
-    # Add action to history
-    for actions in action_history:
-        observations.extend(actions)
+    observations = orient_history[-1] + action_history[-1]
 
     # Round values to reduce noise
     observations = [round(val, 4) for val in observations]
 
-    return np.array(observations, dtype=np.float32)
+    return np.clip(np.array(observations, dtype=np.float32), -1.0, 1.0)
 
 
 if __name__ == '__main__':

@@ -15,7 +15,7 @@ from isaaclab_rl.rsl_rl import (
 @configclass
 class BimoPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 16
-    max_iterations = 1200
+    max_iterations = 500
     save_interval = 50
     experiment_name = "bimo_ppo_rsrl"
     empirical_normalization = True
@@ -28,8 +28,8 @@ class BimoPPORunnerCfg(RslRlOnPolicyRunnerCfg):
 
     policy = RslRlPpoActorCriticCfg(
         init_noise_std=1.0,
-        actor_hidden_dims=[512, 256, 128],
-        critic_hidden_dims=[512, 256, 128],
+        actor_hidden_dims=[256, 128, 64],
+        critic_hidden_dims=[256, 128, 64],
         actor_obs_normalization=True,
         critic_obs_normalization=False,
         state_dependent_std=False,
@@ -41,9 +41,9 @@ class BimoPPORunnerCfg(RslRlOnPolicyRunnerCfg):
         use_clipped_value_loss=True,
         clip_param=0.2,
         entropy_coef=0.005,
-        num_learning_epochs=5,
+        num_learning_epochs=10,
         num_mini_batches=4,
-        learning_rate=1e-3,
+        learning_rate=3e-3,
         gamma=0.99,
         lam=0.95,
         max_grad_norm=1.0,

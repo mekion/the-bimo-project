@@ -4,6 +4,9 @@ All notable changes to the Bimo Robotics Kit MCU firmware will be documented in 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+> **Note:** From v1.0.0 onwards, all changes are tracked in the main
+> [CHANGELOG.md](../../CHANGELOG.md) at the repository root.
+
 ---
 
 ## [1.0.0] - 2026-04-12

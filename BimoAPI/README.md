@@ -102,6 +102,7 @@ state = bimo.request_state_data()
 state["orient"]         # [roll, pitch, yaw] in radians (Euler)
 state["distances"]      # [front, back, right, left] in meters
 state["power"]          # Current system voltage reading (V)
+state["rp_temp"]        # RP2040 internal temperature (°C)
 state["servo_pos"]      # 8 joint positions in degrees
 state["servo_speed"]    # 8 joint speeds in rad/s
 state["servo_load"]     # 8 joint loads in Nm (approximate)

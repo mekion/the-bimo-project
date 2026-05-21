@@ -3,7 +3,7 @@
  * Copyright (c) 2025-2026, Mekion
  * SPDX-License-Identifier: Apache-2.0
  *
- * Version: 1.0.0
+ * Version: 1.0.1
  * Target: RP2040
  */
 
@@ -36,28 +36,31 @@ uint16_t distBuffer[4] = {0};  // Buffer for core 1
 
 // Servos
 SMS_STS servoDriver;
-int newPositions[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+int newPositions[8] = {0};
 const int servoMin[8] = {485, 1563, 1911, 1024, 456, 2041, 984, 984};
 const int servoMax[8] = {2533, 3611, 3072, 2185, 2055, 3640, 3112, 3112};
 
-// State Data, total 114B
+// State Data, total 118B
 struct __attribute__((packed)) StateData {
   // IMU 16B
-  float imu[4];
+  float imu[4] = {0.0};
   
   // Distance 8B
-  uint16_t dist[4];
+  uint16_t dist[4] = {0};
 
   // Power source voltage 2B
   uint16_t power = 0;
+
+  // RP2040 temperature 4B
+  float rpTemp = 0.0;
   
   // Servo feedback 88B
-  uint16_t pos[8];  // 16B
-  int16_t speed[8];  // 16B
-  int16_t load[8];  // 16B
-  uint16_t voltage[8];  // 16B
-  int16_t current[8];  // 16B
-  uint8_t temp[8];  // 8B
+  uint16_t pos[8] = {0};  // 16B
+  int16_t speed[8] = {0};  // 16B
+  int16_t load[8] = {0};  // 16B
+  uint16_t voltage[8] = {0};  // 16B
+  int16_t current[8] = {0};  // 16B
+  uint8_t temp[8] = {0};  // 8B
 } state;
 
 
@@ -92,14 +95,26 @@ void setup()
   mux.begin(MUX_WIRE);
   mux.closeAll();
 
-  for (int i = 0; i < 4; i++)
-  {
+  for (int i = 0; i < 4; i++) {
     mux.openChannel(i);
-    distSensors[i].init();
-    distSensors[i].setTimeout(500);
-    distSensors[i].setMeasurementTimingBudget(33000);
-    distSensors[i].startContinuous(33);  // 33ms interval
+    delay(25);
+
+    bool ok = false;
+    for (int attempt = 0; attempt < 3 && !ok; attempt++) {
+      ok = distSensors[i].init();
+      if (!ok) {
+        delay(50);
+      }
+    }
+
+    if (ok) {
+      distSensors[i].setTimeout(200);
+      distSensors[i].setMeasurementTimingBudget(33000);
+      distSensors[i].startContinuous(33);
+    }
+
     mux.closeChannel(i);
+    delay(25);
   }
 
   // Wire1 & IMU
@@ -126,6 +141,7 @@ void core1Entry()
   {
     updateDistanceReadings();
     updatePowerReading();
+    updateRptReading();
   }
 }
 
@@ -279,6 +295,17 @@ void updatePowerReading()
   // Pack as uint16
   state.power = (uint16_t)((v_avg - 9.0) / 4.0 * 65535.0);
 
+  core1Writing = false;
+}
+
+
+void updateRptReading()
+{
+  // Reads RP2040 internal temperature
+  float t = analogReadTemp();
+  core1Writing = true;
+  while(core0Reading) delay(0);
+  state.rpTemp = t;
   core1Writing = false;
 }
 

@@ -17,7 +17,7 @@ class Bimo():
     def __init__(self):
         # MCU comms
         self.mcu = None
-        self.state_format = "<4f4H1H8H8h8h8H8h8B"
+        self.state_format = "<4f4H1H1f8H8h8h8H8h8B"
         self.state_size = struct.calcsize(self.state_format)
 
         # Cameras
@@ -25,9 +25,9 @@ class Bimo():
         self.top_cam = None
 
         # Servos
-        self.servo_max = [90, 90, 90, 12, 140, 140, 93, 93]
-        self.servo_min = [-90, -90, -12, -90, 0, 0, -93, -93]
-        self.sit_pose = [-47.5, -47.5, 0, 0, 140, 140, 93, 93]
+        self.servo_max = [90, 90, 90, 8, 140, 140, 93, 93]
+        self.servo_min = [-90, -90, -8, -90, 0, 0, -93, -93]
+        self.sit_pose = [-47.5, -47.5, 0, 0, 140, 140, 92.54, 92.54]
         self.stand_pose = [-30, -30, 0, 0, 60, 60, 30, 30]
         self.centers = [1508, 2588, 2048, 2048, 456, 3640, 2048, 2048]
 
@@ -85,17 +85,20 @@ class Bimo():
         print("Lift robot in the air and remove the leg guide. Ankles will move and calibrate.")
         input("Press Enter to continue...")
 
-        raw_curr_pose = self.deg2servo(self.sit_pose)
-        ankle_diff = int(92.54 / 360 * 4095)
+        # raw_curr_pose = self.deg2servo(self.sit_pose)
+        # ankle_diff = int(92.54 / 360 * 4095)
 
-        raw_curr_pose[6] += ankle_diff
-        raw_curr_pose[7] -= ankle_diff
+        # raw_curr_pose[6] += ankle_diff
+        # raw_curr_pose[7] += ankle_diff
+        target_pose = list(self.sit_pose)
+        target_pose[6] = -92.54
+        target_pose[7] = -92.54
 
-        self.send_positions(self.servo2deg(raw_curr_pose))
+        self.send_positions(target_pose)
         sleep(3)
         self.calibrate_servos()
 
-        print("Place robot on the ground in sitting pose.")
+        print("Place robot on the ground.")
         input("Press Enter to continue...")
         print("INFO: Bimo Calibration Successful!")
 
@@ -160,15 +163,16 @@ class Bimo():
         """
         Returns robot state dict
 
-        "orient" -> Euler angles (rad)
+        "orient" -> Euler angles
         "distances" -> [Front, Back, Right, Left] (m)
-        "power" -> Power source voltage [9.0V - 13.0V]
+        "power" -> Power source voltage (9.0V - 13.0V)
+        "rp_temp" -> Internal temperature reading of RP2040
         "servo_pos" -> Degrees
         "servo_speed" -> Rad/s
         "servo_load" -> Nm
         "servo_voltage" -> V
         "servo_current" -> A
-            "servo_temp" -> Celsius
+        "servo_temp" -> Celsius
 
         """
         # Asks for state data
@@ -182,12 +186,13 @@ class Bimo():
             "orient": self.quaternion_to_euler(unpacked[:4]),
             "distances": [d * 0.001 for d in unpacked[4:8]],
             "power": round(9 + (unpacked[8] / 65535.0) * 4.0, 2),
-            "servo_pos": self.servo2deg(unpacked[9:17]),
-            "servo_speed": [d * 0.088 * (math.pi / 180) for d in unpacked[17:25]],
-            "servo_load": [d * 2.942 / 1000 for d in unpacked[25:33]],
-            "servo_voltage": [d * 0.1 for d in unpacked[33:41]],
-            "servo_current": [d * 0.0065 for d in unpacked[41:49]],
-            "servo_temp": list(unpacked[49:57]),
+            "rp_temp": round(unpacked[9], 2),
+            "servo_pos": self.servo2deg(unpacked[10:18]),
+            "servo_speed": [d * 0.088 * (math.pi / 180) for d in unpacked[18:26]],
+            "servo_load": [d * 2.942 / 1000 for d in unpacked[26:34]],
+            "servo_voltage": [d * 0.1 for d in unpacked[34:42]],
+            "servo_current": [d * 0.0065 for d in unpacked[42:50]],
+            "servo_temp": list(unpacked[50:58]),
         }
 
         # Updates heading if locked

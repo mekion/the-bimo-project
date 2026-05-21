@@ -10,6 +10,7 @@ The MCU firmware handles:
 - Distance sensors: 4 × VL53L0X ToF sensors via an I2C multiplexer.
 - Servo feedback: position, speed, load, voltage, current, and temperature for each servo.
 - System voltage reading, useful for battery-powered projects.
+- RP2040 internal temperature reading.
 - Power switch control to activate/deactivate servo power. Can be used as a digital safeguard.
 - Serial communication: binary protocol at **921600 baud** over USB.
 
@@ -64,7 +65,6 @@ The SLS version kit (fully assembled) ships with pre-loaded firmware and calibra
 > NOTE: GPIO 2, 3 are connected to IMU and GPIO 4, 5 to I2C Switch. Check addresses of new I2C devices before connecting to these pins.
 
 
-
 ## Debugging
 
 If the MCU does not respond:
@@ -74,6 +74,8 @@ If the MCU does not respond:
 - Send `msg == 2` (alive) and confirm a 4‑byte response.
 - Ensure servos have power and are correctly connected.
 - Ensure all sensors are correctly connected. MCU will fail silently with incorrect connections.
+- Ensure all sensors are correctly connected. Distance sensors attempt 3 init retries on startup. Failed sensors report max range (2000 mm) silently without halting.
+
 
 ## Advanced Users
 
@@ -106,10 +108,11 @@ All messages use the same header:
 
 - `msg == 1` — Request state data
     - Payload: `int32(1)`
-    - Response: one packed `StateData` struct (114 bytes) containing:
+    - Response: one packed `StateData` struct (118 bytes) containing:
         - IMU quaternion (`float[4]`, w, x, y, z).
         - Distance readings (`uint16_t[4]`, mm).
         - Power source voltage (`uint16_t`, 65535 mapped to 9V-13V).
+        - RP2040 internal temperature (`float`, °C).
         - Servo feedback arrays for all 8 servos:
             - `uint16_t pos[8]`
             - `int16_t speed[8]`
