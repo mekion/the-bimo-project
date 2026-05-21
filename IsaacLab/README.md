@@ -9,7 +9,6 @@ This folder contains the **Isaac Lab task definition** for training locomotion p
 
 - **Full Implementation**: to quickly train and deploy.
 - **Walk Task**: learns how to walk and **directly transfers to real robot**.
-- **2 Experimental Task Variants**: turn, and stop (keep standing when pushed)
 - **Vectorized Approach**: parallel environments for fast, under 15 min training time (depends on hardware)
 - **Domain Randomization**: foot pad friction (TPU material variance), link mass (±5%),
   periodic pushes, sensor/actuator noise, backlash simulation, and voltage-driven torque cycling.
@@ -50,17 +49,6 @@ You can record videos automatically at certain intervals during training, to min
 
 These commands train the default **walking model** that transfers directly to the real robot.
 
-
-### Experimental Task Variants
-
-The following tasks are available for research and experimentation, but **do not currently transfer to hardware**:
-
-**1. Turn**: learns directional control via extra observation signal (turn left/right)  
-**2. Stop**: learns to keep the robot standing when pushes are applied
-
-These are included to explore alternative behaviors and can be trained, but hardware validation is needed before deployment. They can be selected by changing the `obj` field in `BimoEnvCfg` inside `bimo_task_env.py`.
-
-
 ### Monitor Training
 
 TensorBoard is used by default for training logs. Install TensorBoard inside your Python environment for visualization:
@@ -88,28 +76,25 @@ The **walking policy** will transfer directly. Other behaviors may require hardw
 
 ## Environment Design
 
-**Observations (44 values - walk & stop / 41 - turn)**
-- 4-step IMU orientation history (roll, pitch, yaw × 4 = 12 values)
-- 4-step action history, scaled to [-1, 1] (8 joints × 4 = 32 values)
-- Direction: meant for turn selection signal (+1 right / -1 left)
+**Observations (11 values)**
+- IMU orientation (roll, pitch, yaw)
+- Last commanded actions, scaled to [-1, 1] (8 values)
 
-**Reward Components** (`obj` key selects weight preset):
-
-| Component | Walk | Turn | Stop |
-|---|---|---|---|
-| Orientation | ✓ | ✓ | ✓ |
-| Height | ✓ | ✓ | ✓ |
-| Joint position | ✓ | ✓ | ✓ |
-| Sigmoid extra | — | ✓ | ✓ |
-| Feet clearance | ✓ | ✓ | ✓ |
-| Velocity | ✓ | ✓ | — |
-| Deviation | ✓ | — | — |
+**Reward Components**
+- Orientation
+- Height
+- Joint position
+- Sigmoid extra
+- Feet clearance
+- Velocity
+- Deviation
 
 **Sim-to-Real Design Choices:**
-- Backlash simulation: 2.4° deadzone on direction reversal.
+- Backlash simulation: [1, 2.4] degrees, deadzone on direction reversal.
 - Actuator noise: Gaussian (σ=0.5°) on commanded position.
 - Actuator delay: 0-1 physics steps (0-5ms), randomly per step.
-- Action history initialized with raw degree values (outside [-1,1]) for reset robustness.
+- Terrain surface and morphology randomization.
+- Randomization of contact properties.
 
 
 ## Task Definition
@@ -121,24 +106,17 @@ The task files and configurations are defined in `bimo/`:
 - **`agents/rsl_rl.py`**: RSL-RL PPO hyperparameters.
 
 
-## Current Locomotion Status
-
-**Walking**: tested and verified sim-to-real transfer.
-**Turning/Stopping**: experimental, training works, hardware transfer pending.
-
-
 ## Next Steps
 
-- Perform sim-to-real parameter matching to improve transfer quality.
-- Validate stop and turn on hardware.
-- Increase overall training robustness.
+- Develop unified locomotion model with heading direction input.
+- Increase overall training and sim-to-real robustness.
 
 
 ## References
 
 - [Isaac Lab Docs](https://isaac-sim.github.io/IsaacLab/v2.3.0/)
 - [RSL-RL GitHub](https://github.com/leggedrobotics/rsl_rl)
-- [Bimo BimoAPI](../BimoAPI/) for hardware control and inference
+- [Bimo BimoAPI](../BimoAPI/) for hardware control and inference.
 
 
 ## Support
