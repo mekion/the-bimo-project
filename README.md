@@ -111,6 +111,7 @@ session = ort.InferenceSession("policy.onnx",
 ```
 the-bimo-project/
 ├── README.md                # Main project README
+├── CHANGELOG.md             # Main project CHANGELOG
 ├── LICENSE                  # Apache 2.0
 ├── .gitignore
 │
