@@ -1,21 +1,20 @@
 # Bimo Robotics Kit – Open-Source Bipedal Robotics Platform
 
 ![Bimo Robotics Kit](assets/bimo_main.webp)
+
 Bimo is an **open-source bipedal robot** created to make bipedal robotics research more accessible in a compact platform. Get started with pre-built kits or customize the design. Includes complete CAD files (coming soon), RP2040 firmware, Isaac Lab training environment, and a Python API for real-time control and model deployment.
 
-[![oosmetrics - Top 10 RL Acceleration](https://api.oosmetrics.com/api/v1/badge/achievement/5f8f338f-939d-4344-9123-d893b9468fda.svg)](https://oosmetrics.com/repo/mekion/the-bimo-project)
-
-**[Product Page](https://www.mekion.com)** • **[Discord Community](https://discord.gg/9uXsArwXHG)**
+[![ko-fi](https://img.shields.io/badge/Ko--fi-Support%20Bimo-FF5E5B?logo=kofi&logoColor=white)](https://ko-fi.com/mekion)    [![oosmetrics - Top 10 RL Acceleration](https://api.oosmetrics.com/api/v1/badge/achievement/5f8f338f-939d-4344-9123-d893b9468fda.svg)](https://oosmetrics.com/repo/mekion/the-bimo-project)
 
 ---
 
-### Key Highlights
+## Key Highlights
 
 - **Fully Open Source:** CAD files (coming soon), firmware, simulation and deployment code.
 - **Sim-to-Real Ready:** train policies in Isaac Lab, deploy directly on hardware.
 - **Baseline Walking Model:** deployed directly from simulation, without adaptation.
 - **Two Configurations:** available as a fully assembled SLS kit or a DIY 3D-printable edition.
-- **Fast Training:** vectorized Isaac Lab environment to train policies in <15 minutes (depends on hardware).
+- **Fast Training:** vectorized Isaac Lab environment to train policies in ~5 minutes (depends on hardware).
 
 ![Bimo Walk](assets/bimo_walk.webp)
 
@@ -181,10 +180,10 @@ All code and CAD designs are, and will, be released under the **Apache 2.0 Licen
 
 ## Links
 
-- **Website:** [Mekion](https://www.mekion.com)
-- **GitHub:** [github.com/mekion/the-bimo-project](https://github.com/mekion/the-bimo-project)
-- **Discord:** [Join Community](https://discord.gg/9uXsArwXHG)
-- **Issues & Discussions:** [GitHub Issues](https://github.com/mekion/the-bimo-project/issues)
+- **Website:** [mekion.com](https://www.mekion.com)
+- **Discord:** [Mekion | The Bimo Project](https://discord.gg/9uXsArwXHG)
+- **X(Twitter):** [@mekionlabs](https://x.com/mekionlabs)
+- **YouTube**: [@mekionlabs](https://www.youtube.com/@mekionlabs)
 
 ---
 
@@ -192,7 +191,6 @@ All code and CAD designs are, and will, be released under the **Apache 2.0 Licen
 
 For questions, partnerships, or press inquiries:
 - **Email:** info@mekion.com
-- **X(Twitter):** [@mekionlabs](https://x.com/mekionlabs)
 
 ---
 
