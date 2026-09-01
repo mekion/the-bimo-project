@@ -1,0 +1,6 @@
+# bimo_ros2_msgs/srv/GetRoutine.srv
+string name
+---
+bool success
+string message
+ActionCommand[] steps

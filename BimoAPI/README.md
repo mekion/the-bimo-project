@@ -1,6 +1,8 @@
+
+
 # BimoAPI – Python Control Library
 
-Control the Bimo robot with a simple Python API. Run ONNX policies, execute pre-programmed routines, or build custom behaviors.
+Control the Bimo robot with a simple Python API. Run ONNX policies, CPG models, execute pre-programmed routines, or build custom behaviors.
 
 ## Installation
 
@@ -10,9 +12,9 @@ From the `BimoAPI` folder:
 pip install -e .
 ```
 
-This installs the `mekion-bimo` package and dependencies (`pyserial`, `numpy`, `onnxruntime`, `opencv-python`).
+This installs the `mekion-bimo` package and dependencies (`pyserial`, `numpy`, `onnxruntime`, `opencv-python`, `pynput`).
 
-## Quick Start
+## Quick Start Guide
 
 ### Basic Usage
 
@@ -30,39 +32,33 @@ bimo.send_positions([-30, -30, 0, 0, 60, 60, 30, 30])
 ```
 > WARNING: Always double-check manual positions! The above example sends a standing pose as an example AFTER sitting down, which would make the robot launch itself backwards!
 
-### ONNX Policy Loop (`api_example.py`)
 
-```python
-from time import sleep, time
-import onnxruntime as ort
-import numpy as np
-from bimo import Bimo
+### Full Control Examples
 
-bimo = Bimo()
-bimo.initialize()
-bimo.perform("stand")
-bimo.lock_heading()  # Required for walking model
+Three ready-to-run scripts are included, each a complete standalone control loop built on the Bimo API:
 
-session = ort.InferenceSession(
-    "policy.onnx",
-    providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
-)
+| Script | Description |
+| :-- | :-- |
+| `cpg_walk.py` | CPG-driven walking gait with startup ramp-up and automatic heading-hold turn correction. No input required. Walks straight once standing. |
+| `cpg_walk_keyboard.py` | Same CPG gait as above, but steerable in real time: hold `Q`/`E` to turn left/right, release to resume walking straight. |
+| `nn_walk.py` | ONNX policy inference loop. Loads a trained `policy.onnx`, builds observations from orientation and last actions each step, and executes the model's actions output. |
 
-period = 0.05
-t1 = time()
+> Both CPG examples turn by biasing the two hip joints in opposite directions on top of their straight-walk offset `CENTER_VALUE`, while `MAX_TURN` caps how aggressive the bias can get. `CENTER_VALUE` is a per-robot calibration constant and may need adjusting if your build drifts while walking straight.
 
-while True:
-    state = bimo.request_state_data()  # Full state dictionary
-    # ... build observations from orientation + action history ...
-    actions = session.run(None, {session.get_inputs()[0].name: obs.reshape(1, -1)})
-    # ... post-process actions ...
-    bimo.send_positions(new_actions)  # Degrees
+> The `cpg_walk.py` example derives that bias automatically, proportionally to the heading deviation, to hold a straight line.
 
-    t1 += period
-    sleep_dt = max(0, t1 - time())
-    sleep(sleep_dt)
+> The `cpg_walk_keyboard.py` example overrides it directly from `Q`/`E` key state. 
+
+Run any of the examples directly once the robot is wired up.  The  `policy.onnx` file (for the `nn_walk.py` example) needs to be in the working directory for correct execution.
+
+```bash
+# Launching examples
+python3 cpg_walk.py
+python3 cpg_walk_keyboard.py
+python3 api_example.py
 ```
-> NOTE: `lock_heading()` must be called after standing. The walking model observes yaw as deviation from this reference point. Without it, heading correction will fail.
+
+Read through whichever one matches your use case for the exact `lock_heading()` placement, ramp-up handling, camera control and observation construction. See the **API Reference** below for more information.
 
 
 ## API Reference
@@ -128,6 +124,7 @@ Built-in routines ("stand", "sit") are available directly via bimo.perform(). Fo
 | Method | Description |
 | :-- | :-- |
 | `add_routine(name, poses)` | Register a custom routine as a list of 8‑element pose lists (degrees). |
+| `get_routine(name)` | Returns a routine by name (list of actions). |
 
 > NOTE: custom routines are added via `bimo.routines.add_routine(name, poses)` and executed with `bimo.perform(name)`.
 
@@ -157,14 +154,55 @@ bimo.routines.add_routine("wobble", wobble_head)
 bimo.perform("wobble")
 ```
 
+### `BimoCPG`: central pattern generator
+
+Fourier-series gait approximation with per-joint amplitude gain correction. Runs independently of `Bimo`.  Instantiate it separately and feed its output into `bimo.send_positions()` yourself, as shown in `cpg_walk.py` and `cpg_walk_keyboard.py` examples.
+
+```python
+# CPG initalization
+from bimo import BimoCPG
+cpg = BimoCPG(step_freq_hz=1.5)
+```
+
+**Constructor**
+
+| Parameter | Description |
+| :-- | :-- |
+| `step_freq_hz` (default `1.5`) | Cycles per second of the gait (`1 / step_period`). |
+| `phase_offset` (default `0.0`) | Global phase shift, in radians. |
+| `amp_gain` (default `None`) | Optional `{joint_idx: gain}` dict overriding the built-in per-joint amplitude gains, e.g. `amp_gain={4: 2.5, 5: 2.5}` to push the knees further if they undershoot. |
+
+**Attributes**
+
+- `omega`: angular frequency in rad/s (`2π × step_freq_hz`). Can be reassigned at runtime to change gait speed on the fly. This is how both CPG examples ramp the gait in from a standstill.
+
+- `phi`: current internal phase, in radians (`0` to `2π`).
+- `amp_gain`: the active per-joint amplitude gain dict.
+
+**Methods**
+
+| Method | Description |
+| :-- | :-- |
+| `step(dt)` | Advances the internal phase clock by `dt` seconds. |
+| `joint_angle(j)` | Returns the next position (degrees) for joint `j` (0–7) at the current phase. |
+| `angles()` | Returns the next positions (degrees) for all 8 joints as a list, in the same joint order as `Bimo.send_positions()`. |
+
+> NOTE: `BimoCPG` only computes joint angles. It never talks to the MCU. Call `angles()` to get positions, then pass them to `bimo.send_positions()` yourself, and call `step(dt)` once per loop iteration to advance the gait.
+
 
 ## Cameras
 
+Cameras run over a separate USB/V4L2 path from the MCU serial connection, so `capture_image()` never competes with `send_positions()`/`request_state_data()` for the same hardware.  You can safely call both in the same control loop. 
+
+However, `capture_image()` itself is a **blocking** call (it waits on the camera driver to hand back a frame), so if you need to stream images continuously alongside a tight control loop, run the capture calls on their own thread rather than inline in the loop.  Otherwise every frame grab stalls that iteration's timing, even though nothing about the MCU communication requires it to.
+
 - Two USB cameras are expected (front and top).
+
 - Supported resolutions (MJPEG @ 30 FPS): `(1280, 720)`, `(848, 480)`, `(800, 600)`, `(640, 480)`, `(640, 360)`, `(352, 288)`, `(320, 240)`, `(160, 120)`.
 - `Bimo.initialize()` automatically detects and configures them.
 
 ```python
+# Example usage
 front = bimo.capture_image("front")
 top = bimo.capture_image("top")
 ```
@@ -175,11 +213,12 @@ top = bimo.capture_image("top")
 - **Cannot connect to MCU**:
     - Check USB cable and that the RP2040 is flashed with the latest `micro_bimo.ino`.
     - Check `/dev/ttyACM*` and permissions.
+
 - **Servos not moving**:
     - Verify robot power and servo wiring.
     - Run `bimo.initialize(calibrate=True)` once after finishing the DIY build.
 - **Cameras not found**:
-    - Ensure two UVC cameras are connected.
+    - Ensure the two cameras are connected.
     - Check `/dev/video*` and supported resolutions.
 
-For a full working example, see `api_example.py`.
+---

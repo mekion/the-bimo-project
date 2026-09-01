@@ -1,14 +1,17 @@
-# Copyright (c) 2025-2026, Mekion
-# Copyright (c) 2022-2026, The Isaac Lab Project Developers.
-# SPDX-License-Identifier: Apache-2.0
+"""
+Copyright (c) 2025-2026, Mekion
+Copyright (c) 2022-2026, The Isaac Lab Project Developers.
+SPDX-License-Identifier: Apache-2.0
 
-"""Bimo Robotics Kit articulation configuration and actuator parameters for Isaac Lab."""
+Bimo Robotics Kit articulation configuration and actuator parameters for Isaac Lab.
+"""
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg
-from isaaclab.actuators import DCMotorCfg
 from pathlib import Path
 from math import pi
+from .actuators.STS3215 import STS3215Cfg
+
 
 RAD = pi / 180
 
@@ -28,6 +31,7 @@ BIMO_CFG = ArticulationCfg(
             solver_velocity_iteration_count=1,
             sleep_threshold=0.005,
             stabilization_threshold=0.001,
+            fix_root_link=False,
         ),
         copy_from_source=False,
     ),
@@ -48,17 +52,12 @@ BIMO_CFG = ArticulationCfg(
     ),
 
     actuators={
-        "joints": DCMotorCfg(
+        "joints": STS3215Cfg(
+            # See STS3215 actuator @configclass for more details & settings
             joint_names_expr=[".*"],
-            stiffness=35,
-            damping=0.8,
-            armature=0.08,
-            friction=0.01,
-            saturation_effort=2.94,
-            effort_limit=2.94,
-            effort_limit_sim=2.94,
-            velocity_limit=4.71,
-            velocity_limit_sim=4.71,
+            effort_limit_sim=2.943,
+            velocity_limit_sim=4.712,
+            init_pose_deg=[-30, -30, 0, 0, 60, 60, 30, 30],
         ),
     },
 )

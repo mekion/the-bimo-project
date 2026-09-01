@@ -11,3 +11,13 @@ gym.register(
         "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl:BimoPPORunnerCfg",
     },
 )
+
+gym.register(
+    id="Bimo-Distillation",
+    entry_point=f"{__name__}.bimo_task_env:BimoEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.bimo_task_env:BimoEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl:BimoDistillationRunnerCfg",
+    },
+)

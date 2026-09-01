@@ -1,0 +1,10 @@
+float32[3] orient
+float32[4] distances
+float32   power
+float32   rp_temp
+float32[8] servo_pos
+float32[8] servo_speed
+float32[8] servo_load
+float32[8] servo_voltage
+float32[8] servo_current
+uint8[8]  servo_temp

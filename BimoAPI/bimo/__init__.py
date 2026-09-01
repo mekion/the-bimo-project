@@ -4,6 +4,7 @@
 
 from .bimo import Bimo
 from .routines import BimoRoutines
+from .cpg import BimoCPG
 
-__all__ = ["Bimo", "BimoRoutines"]
-__version__ = "1.1.0.dev0"
+__all__ = ["Bimo", "BimoRoutines", "BimoCPG"]
+__version__ = "1.1.0"

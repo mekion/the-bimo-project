@@ -1,0 +1,5 @@
+string camera
+---
+bool success
+string message
+sensor_msgs/Image image

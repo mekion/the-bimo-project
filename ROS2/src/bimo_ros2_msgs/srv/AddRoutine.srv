@@ -1,0 +1,5 @@
+string name
+ActionCommand[] steps
+---
+bool success
+string message

@@ -1,0 +1,1 @@
+float32[8] positions   # degrees, joint order matches bimo.servo_min/max

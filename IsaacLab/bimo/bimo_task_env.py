@@ -1,10 +1,11 @@
-# Copyright (c) 2025-2026, Mekion
-# Copyright (c) 2022-2026, The Isaac Lab Project Developers.
-# SPDX-License-Identifier: Apache-2.0
+"""
+Copyright (c) 2025-2026, Mekion
+Copyright (c) 2022-2026, The Isaac Lab Project Developers.
+SPDX-License-Identifier: Apache-2.0
 
-"""Bimo Robotics Kit task environment for Isaac Lab.
+Bimo Robotics Kit task environment for Isaac Lab.
 
-   > Walking Behavior Model
+Walking Behavior RL Model
 """
 
 import torch
@@ -42,20 +43,11 @@ class BimoEnvCfg(DirectRLEnvCfg):
     state_space = 0
     dt = 0.005  # Physics step in seconds
 
-    # Walk behavior reward weights
-    # [orientation, height, joint pos, joint pos sigmoid, feet height, velocity, deviation]
-    weights = [1, 1, 1, 0, 1, 1, 1]
+    # Reward weights [orientation, height, joint pos, feet height, velocity, deviation]
+    weights = [1, 1, 1, 1, 1, 1]
 
-    # Head COM shift (Adjust based on payload)
+    # Head X CoM shift (adjust based on payload position)
     com_shift = 0.01  # Forward (X) Positive
-
-    # Y oscillation limit (Adjust based on payload, usually increases with it)
-    oscillation_lim = 2
-
-    # Actuator settings
-    actuator_delay_max = 1  # Physics steps
-    actuator_delay_min = 0  # Physics steps
-    backlash_range = (1.0, 2.4)  # Degrees
 
     # Simulation
     sim: SimulationCfg = SimulationCfg(dt=dt)
@@ -88,7 +80,7 @@ class BimoEnvCfg(DirectRLEnvCfg):
         force_threshold=0.001,
     )
 
-    # Link mass randomization
+    # Link mass randomization and pushes
     events = {
         "randomize_link_mass": EventTermCfg(
             func="isaaclab.envs.mdp.events:randomize_rigid_body_mass",
@@ -101,6 +93,16 @@ class BimoEnvCfg(DirectRLEnvCfg):
                 "recompute_inertia": True,
             }
         ),
+        "periodic_push": EventTermCfg(
+            func="isaaclab.envs.mdp.events:push_by_setting_velocity",
+            mode="interval",
+            params={
+                "asset_cfg": SceneEntityCfg("bimo", body_names="Head"),
+                # Set to 0.0, which overwrites velocity buffers randomly, causing randomizing effect
+                "velocity_range": {"x": (-0.0, 0.0), "y": (-0.0, 0.0), "z": (-0.0, 0.0)},
+            },
+            interval_range_s=(2.0, 4.0),
+        )
     }
 
 
@@ -112,31 +114,14 @@ class BimoEnv(DirectRLEnv):
         self.servo_max = torch.tensor([90, 90, 90, 12, 140, 140, 93, 93], device=self.device, dtype=torch.int)
         self.servo_min = torch.tensor([-90, -90, -12, -90, 0, 0, -93, -93], device=self.device, dtype=torch.int)
 
-        # Buffers for joint positions
+        # Base pose
         start_pos = [-30, -30, 0, 0, 60, 60, 30, 30]
         self.base_pose = torch.tensor([start_pos for _ in range(self.scene.num_envs)], device=self.device, dtype=torch.float32)
-        self.base_pos_scaled = torch.clamp((self.base_pose[0] - self.servo_min) / (self.servo_max - self.servo_min) * 2 - 1, -1, 1)
 
-        self.cmd_actions = self.base_pose.clone()  # Commanded by NN (degrees)
-        self.last_direction = torch.zeros(self.scene.num_envs, 8, device=self.device)
-        self.gear_position = self.base_pose.clone()  # Applied joint targets (degrees)
+        # Commanded actions by NN (degrees)
+        self.cmd_actions = self.base_pose.clone()
 
-        # Backlash simulation
-        bk_min, bk_max = self.cfg.backlash_range
-        self.bk_values = torch.arange(
-            bk_min,
-            bk_max + 0.05,   # Ensures upper value is included
-            0.1,
-            device=self.device,
-            dtype=torch.float32,
-        )
-        self.backlash = torch.empty(
-            (self.num_envs, 8),
-            device=self.device,
-            dtype=torch.float32,
-        )
-
-        # Torque parameter range for joints
+        # Torque parameter range for randomization
         self.n_torques = 24
         self.torque_range = torch.linspace(
             2.7,   # 2.7 Nm (min voltage ~10V)
@@ -153,22 +138,11 @@ class BimoEnv(DirectRLEnv):
         # Reward weights
         self.weights = torch.tensor(self.cfg.weights, device=self.device).repeat(self.scene.num_envs, 1)
 
-        # Actuator delays
-        self.act_timer = 0
-        self.act_delay = 0
-
-        # Single config set flag for all envs such as COM or torque
+        # Single config-set flag for COM
         self.com_set = False
 
-        # Limits allowed oscillation during walk
-        self.osc_lim = self.cfg.oscillation_lim
-
-        # History keeping (kept for experimentation, only newest values used)
-        self.orient_h = torch.zeros(self.scene.num_envs, 4, 3, device=self.device)
-        self.act_hist = torch.zeros(self.scene.num_envs, 4, 8, device=self.device)
-
         # Bimo last world position log (used in reward calculation)
-        self.last_position = torch.zeros(self.scene.num_envs, 3, device=self.device)
+        self.last_position = self.scene.env_origins.clone()
 
     def _setup_scene(self):
         # Articulations setup
@@ -200,27 +174,15 @@ class BimoEnv(DirectRLEnv):
                 num_rows=num_rows,
                 num_cols=num_cols,
                 horizontal_scale=0.05,
-                vertical_scale=0.002,
+                vertical_scale=0.001,
                 slope_threshold=0.75,
                 color_scheme="height",
                 sub_terrains={
-                    "flat": HfRandomUniformTerrainCfg(
-                        proportion=0.6,
+                    "flat": HfRandomUniformTerrainCfg(  # Flat with slight deviations
+                        proportion=1.0,
                         noise_range=(-0.001, 0.001),
-                        noise_step=0.002,
+                        noise_step=0.001,
                         downsampled_scale=0.2,
-                    ),
-                    "rough": HfRandomUniformTerrainCfg(
-                        proportion=0.2,
-                        noise_range=(-0.003, 0.003),
-                        noise_step=0.002,
-                        downsampled_scale=0.15,
-                    ),
-                    "slope": HfRandomUniformTerrainCfg(
-                        proportion=0.2,
-                        noise_range=(-0.006, 0.006),
-                        noise_step=0.002,
-                        downsampled_scale=0.3,
                     ),
                 },
             ),
@@ -269,27 +231,17 @@ class BimoEnv(DirectRLEnv):
         self.cfg.viewer.lookat = (0.0, 0.0, 0.0)
 
     def _get_observations(self):
-        """Compute and return observations"""
-
         # Get IMU orientation data, add noise and scale to [-1, 1]
         self.imu_data = self.scene.sensors["imu"].data
         orient = quaternion_to_euler(self.imu_data.quat_w)
         orient = gaussian_noise(orient, self.orient_noise)
         orient = scale_value(orient, -1.0, 1.0)
 
-        # Update IMU orientation history
-        self.orient_h[:, :-1] = self.orient_h[:, 1:].clone()
-        self.orient_h[:, -1] = orient
-
         # Get last commanded position and scale to [-1, 1]
         cmd_act = torch.clamp((self.cmd_actions - self.servo_min) / (self.servo_max - self.servo_min) * 2 - 1, -1, 1)
 
-        # Update position history
-        self.act_hist[:, :-1] = self.act_hist[:, 1:].clone()
-        self.act_hist[:, -1] = cmd_act
-
-        # Create observation buffer (uses only newest data from history)
-        obs_buffer = torch.cat((self.orient_h[:, -1], self.act_hist[:, -1]), dim=1)
+        # Create observation buffer
+        obs_buffer = torch.cat((orient, cmd_act), dim=1)
         obs_buffer = torch.round(obs_buffer, decimals=4)
 
         return {"policy": obs_buffer}
@@ -297,46 +249,20 @@ class BimoEnv(DirectRLEnv):
     def _pre_physics_step(self, actions):
         # Calculates action delta
         actions_cpy = torch.clamp(actions.clone(), -3.0, 3.0)
-        self.cmd_actions += actions_cpy * 4 / 3
+        self.cmd_actions = torch.clamp(self.cmd_actions + actions_cpy * 4 / 3, self.servo_min, self.servo_max)
 
-        # Simulates backlash
-        delta = self.cmd_actions - self.gear_position
-        direction = torch.sign(delta)
-        direction_changed = (direction != self.last_direction) & (self.last_direction != 0)
-
-        movement = torch.where(
-            direction_changed,
-            torch.clamp(torch.abs(delta) - self.backlash, min=0) * direction,
-            delta,
-        )
-        self.gear_position += movement
-        self.last_direction = torch.where(delta != 0, direction, self.last_direction)
-
-        # Adds noise
-        self.noisy_act = torch.clamp(gaussian_noise(self.gear_position, self.actuator_noise), self.servo_min, self.servo_max)
-
-        # Action delay
-        self.act_timer = 0
-        self.act_delay = torch.randint(
-            low=self.cfg.actuator_delay_min,
-            high=self.cfg.actuator_delay_max + 1,
-            size=(1,)
-        ).item()
+        # Adds noise to actions
+        self.noisy_act = torch.clamp(gaussian_noise(self.cmd_actions, self.actuator_noise), self.servo_min, self.servo_max)
 
     def _apply_action(self):
-        # Applies NN action with delay
-        if self.act_timer >= self.act_delay:
-            self.bimo.set_joint_position_target(torch.deg2rad(self.noisy_act))
-
-        else:
-            self.act_timer += 1
+        # Applies NN action
+        self.bimo.set_joint_position_target(torch.deg2rad(self.noisy_act))
 
     def _get_rewards(self):
         # Get data for reward
         euler_imu_orient = quaternion_to_euler(self.imu_data.quat_w)
         bimo_root_pos = self.bimo.data.root_pos_w
         lin_vel = self.bimo.data.root_com_vel_w
-        ang_vel = self.bimo.data.root_com_ang_vel_b
         contact_pos = self.scene.sensors["contact"].data.pos_w
         air_time = self.scene.sensors["contact"].data.current_air_time
 
@@ -344,18 +270,16 @@ class BimoEnv(DirectRLEnv):
         orientation_rew = orientation_reward(euler_imu_orient, self.device)
         height_rew = height_reward(bimo_root_pos)
         position_rew = joint_position_reward(self.cmd_actions, self.base_pose, self.device)
-        sig_extra = sigmoid_extra(self.cmd_actions, self.base_pose)
-        vel_rew = velocity_reward(lin_vel, ang_vel, self.osc_lim)
-        feet_h_rew = feet_height_reward(air_time, contact_pos, 0.03, 150)
-        dev_rew = deviation_reward(self.scene.env_origins, bimo_root_pos, self.last_position)
+        vel_rew = velocity_reward(lin_vel)
+        feet_h_rew = feet_height_reward(air_time, contact_pos, 0.02, 150)
+        dev_rew = deviation_reward(self.scene.env_origins, bimo_root_pos)
 
         # Compute weighted reward
         w = self.weights / torch.sum(self.weights, dim=1, keepdim=True)
 
         total_reward = (orientation_rew * w[:, 0] + height_rew * w[:, 1]
-                        + position_rew * w[:, 2] + sig_extra * w[:, 3]
-                        + feet_h_rew * w[:, 4] + vel_rew * w[:, 5]
-                        + dev_rew * w[:, 6])
+                        + position_rew * w[:, 2] + feet_h_rew * w[:, 3]
+                        + vel_rew * w[:, 4] + dev_rew * w[:, 5])
 
         # Update buffers
         self.last_position[:] = self.bimo.data.root_pos_w
@@ -412,43 +336,21 @@ class BimoEnv(DirectRLEnv):
         # Advance index wrapping at n_torques
         self.torque_idx[env_ids] = (self.torque_idx[env_ids] + 1) % self.n_torques
 
-        # Write data to sim
+        # Write parameters to sim
         self.bimo.write_joint_effort_limit_to_sim(torque_vals, joint_ids=None, env_ids=env_ids)
         self.bimo.write_root_link_pose_to_sim(root_state[:, :7], env_ids)
         self.bimo.write_root_com_velocity_to_sim(root_state[:, 7:], env_ids)
         self.bimo.write_joint_state_to_sim(joint_pos, joint_vel, None, env_ids)
 
         # Reset buffers
-        self.orient_h[env_ids] = 0.0
-        self.cmd_actions[env_ids] = self.base_pose[0]
-        self.last_position[env_ids] = self.bimo.data.root_pos_w[env_ids]
-        self.gear_position[env_ids] = self.base_pose[env_ids]
-        self.last_direction[env_ids] = 0
-        self.act_hist[env_ids, :] = self.base_pos_scaled
-        self.resample_backlash(env_ids)
-
-    def resample_backlash(self, env_ids=None):
-        """Chooses random backlash value for each joint in env_ids"""
-        if env_ids is None:
-            env_ids = slice(None)
-            n = self.scene.num_envs
-
-        else:
-            n = len(env_ids)
-
-        idx = torch.randint(
-            low=0,
-            high=self.bk_values.numel(),
-            size=(n, 8),
-            device=self.device,
-        )
-
-        self.backlash[env_ids] = self.bk_values[idx]
+        self.cmd_actions[env_ids] = self.base_pose[env_ids]
+        self.last_position[env_ids] = self.scene.env_origins[env_ids]
 
 
 @torch.jit.script
 def quaternion_to_euler(quat: torch.Tensor):
     """Convert quaternion to Euler angles"""
+
     # Normalize quaternion
     quat = quat / torch.norm(quat, dim=-1, keepdim=True)
 
@@ -478,7 +380,8 @@ def quaternion_to_euler(quat: torch.Tensor):
 
 @torch.jit.script
 def scale_value(value: torch.Tensor, min_val: float, max_val: float):
-    # Scale a value to the range [-1, 1]
+    """Scale a value to the range [-1, 1]"""
+
     return torch.clamp((value - min_val) / (max_val - min_val) * 2 - 1, -1, 1)
 
 
@@ -490,7 +393,7 @@ def orientation_reward(euler_imu_orient, device: str):
 
     # Scales Z for softer heading correction
     absolute = torch.abs(euler_imu_orient)
-    absolute[:, 2] *= 0.5
+    absolute[:, 2] *= 0.6
     angle_sums = torch.sum(absolute, dim=1)
 
     # Full reward
@@ -504,17 +407,13 @@ def orientation_reward(euler_imu_orient, device: str):
 
 
 @torch.jit.script
-def deviation_reward(og_pose, curr_pose, last_pose):
-    """X, Y distance deviation reward based on task"""
+def deviation_reward(og_pose, curr_pose):
+    """Y linear distance deviation reward"""
 
-    # Rewards positive X delta, penalizes Y deviation
-    x_dev = curr_pose[:, 0] - last_pose[:, 0]
     y_dev = torch.abs(og_pose[:, 1] - curr_pose[:, 1])
+    y_raw = torch.clamp(1 - y_dev / 0.2, 0.0, 1.0)
 
-    x_raw = torch.clamp(x_dev / 0.2, -1, 1)
-    y_raw = torch.clamp(-y_dev / 0.2, -1, 0)
-
-    reward = torch.clamp(x_raw + y_raw, -1, 1)
+    reward = y_raw * 2 - 1
 
     return reward
 
@@ -545,7 +444,8 @@ def height_reward(bimo_root_pos):
 
 @torch.jit.script
 def joint_position_reward(pos_buff, start_pos, device: str):
-    """Calculates how far the joints position is from the ideal position"""
+    """Calculates how far the joint position is from the ideal position (standing)"""
+
     # Define max differences
     max_diff = torch.tensor([90, 90, 90, 90, 75, 75, 90, 90], device=device)
 
@@ -565,36 +465,22 @@ def joint_position_reward(pos_buff, start_pos, device: str):
 
 
 @torch.jit.script
-def velocity_reward(lin_vel_d, ang_vel_d, osc_lim: float):
-    """Calculates reward based on linear and angular velocities"""
+def velocity_reward(lin_vel_d):
+    """Calculates reward based on forward linear velocity"""
 
-    # Rewards X linear velocity, penalizes Y angular oscillation
     lin_v_x = lin_vel_d[:, 0]
-    ang_v_y = ang_vel_d[:, 1]
-    target_speed = 0.1  # m/s
+    target_speed = 0.06  # m/s
 
-    rew_lin = torch.clamp(torch.tanh(lin_v_x / target_speed), -1, 1)
-    rew_ang = torch.clamp(-torch.abs(ang_v_y) / osc_lim, -1, 0)
-
-    reward = 0.3 * rew_lin + 0.7 * rew_ang
+    sigma = target_speed * 0.5
+    reward = torch.clamp(1.0 - ((lin_v_x - target_speed) / sigma) ** 2, min=-1.0, max=1.0)
 
     return reward
 
 
 @torch.jit.script
-def sigmoid_extra(pos_buff, start_pos):
-    """Extra reward when actuators closer than 10 degres from ideal"""
-    diff = torch.abs(pos_buff - start_pos)
-    greatest_diff, _ = torch.max(diff, dim=1)
-
-    sigmoid_values = 1 / (1 + torch.exp(0.8 * greatest_diff - 6))
-
-    return sigmoid_values
-
-
-@torch.jit.script
 def feet_height_reward(air_time, feet_pos, target_h: float, scale: float = 25.0):
     """Feet clearance reward"""
+
     in_air = (air_time > 0)  # [num_envs, 2]
     num_in_air = in_air.sum(dim=1)  # [num_envs]
 
@@ -603,15 +489,10 @@ def feet_height_reward(air_time, feet_pos, target_h: float, scale: float = 25.0)
 
     # Foot Z positions
     z_pos = feet_pos[..., 2]  # [num_envs, 2]
-    z_err = torch.abs(z_pos - target_h)  # [num_envs, 2]
+    z_err = z_pos - target_h
 
-    # Reward is 1.0 if z >= threshold, else exponential decay
-    reward_per_leg = torch.where(
-        z_pos >= target_h,
-        torch.ones_like(z_pos),         # reward 1.0 if above clearance
-        torch.exp(-scale * z_err)       # otherwise decays
-    ) * in_air.float()                  # only airborne feet count
-
+    # Reward is 1.0 if z = threshold, else exponential decay both ways
+    reward_per_leg = torch.exp(-scale * z_err ** 2) * in_air.float()
     reward = reward_per_leg.sum(dim=1)  # sum both legs
 
     # If both feet in air or both on ground, set reward to 0

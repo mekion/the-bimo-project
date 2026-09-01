@@ -32,6 +32,7 @@ setup(
         "numpy>=2.2.0",
         "onnxruntime>=1.22.0",
         "opencv-python>=4.13.0",
+        "pynput>=1.8.2",
     ],
     python_requires=">=3.8",
     classifiers=[
