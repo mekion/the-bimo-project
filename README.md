@@ -1,12 +1,17 @@
+<div align="center">
+  
+<img src="assets/bimo_main.webp" alt="Bimo Robotics Kit" width="500">
 
+# Bimo Robotics Kit
+  
+*Bimo is an open-source platform that makes bipedal robotics research more accessible in a compact kit.*
 
-# Bimo Robotics Kit – Open-Source Bipedal Robotics Platform
+[Get Your Bimo](https://www.mekion.com/product) - [Quick Start Guide](#quick-start-guide) - [Specs](#main-features--specifications) - [Project Status](#current-project-status)
+</div>
 
-![Bimo Robotics Kit](assets/bimo_main.webp)
+<br>
 
-Bimo is an **open-source bipedal robot** created to make bipedal robotics research more accessible in a compact platform. Get started with pre-built kits or customize the design. Includes complete CAD files (coming soon), RP2040 firmware, Isaac Lab training environment, and a Python API for real-time control and model deployment.
-
-[![ko-fi](https://img.shields.io/badge/Ko--fi-Support%20Bimo-FF5E5B?logo=kofi&logoColor=white)](https://ko-fi.com/mekion)    [![oosmetrics - Top 10 RL Acceleration](https://api.oosmetrics.com/api/v1/badge/achievement/5f8f338f-939d-4344-9123-d893b9468fda.svg)](https://oosmetrics.com/repo/mekion/the-bimo-project)
+Bimo ships in two forms: a fully assembled SLS kit, or a DIY edition you 3D print and assemble yourself. The walking gait, firmware, simulation environment, and control API is included and usable with both. **If you want to build one, [you can get your Bimo here](https://www.mekion.com/product).**
 
 ---
 
@@ -19,6 +24,7 @@ Bimo is an **open-source bipedal robot** created to make bipedal robotics resear
 - **Learn Real Robotics Skills:** RL deployment, computer vision, Python/C++ programming and large-scale robotics simulation.
 - **Two Configurations:** available as a fully assembled SLS kit or a DIY 3D-printable edition.
 - **Fast Training:** vectorized Isaac Lab environment trains policies in ~5 minutes (depends on hardware).
+<br></br>
 
 ![Bimo Highlights](assets/skills.webp)
 
@@ -167,7 +173,7 @@ the-bimo-project/
 
 ## Current Project Status
 
-**Version 1.1.0 (Stable).** Bimo walks omnidirectionally with a stable CPG model. Sim-to-real works for the RL walkng policy (forward walking). The project is in **pre-order** status. Kits ship once the pre-order threshold is reached, followed by CE/FCC certification and fulfillment.
+**Version 1.1.0 (Stable).** Bimo walks omnidirectionally with a stable CPG model. Sim-to-real works for the RL walking policy (forward walking). The project is in **pre-order** status. Kits ship once the pre-order threshold is reached, followed by CE/FCC certification and fulfillment.
 
 ---
 
