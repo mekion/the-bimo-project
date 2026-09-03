@@ -11,7 +11,7 @@
 
 <br>
 
-Bimo ships in two forms: a fully assembled SLS kit, or a DIY edition you 3D print and assemble yourself. The walking gait, firmware, simulation environment, and control API is included and usable with both. **If you want to build one, [you can get your Bimo here](https://www.mekion.com/product).**
+Bimo ships in two forms: a fully assembled SLS kit, or a DIY edition you 3D print and assemble yourself. The walking gait, firmware, simulation environment, and control API are included and usable with both. **If you want to build one, [you can get your Bimo here](https://www.mekion.com/product).**
 
 ---
 
